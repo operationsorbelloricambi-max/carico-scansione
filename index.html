@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Carico a scansione</title>
+<style>
+  :root { --verde:#1f9d55; --rosso:#d64545; --grigio:#6b7280; --bordo:#d9dde3; --sfondo:#f4f5f7; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:16px/1.4 -apple-system, "Segoe UI", Roboto, Arial, sans-serif; background:var(--sfondo); color:#1a202c; }
+  header { background:#1a202c; color:#fff; padding:10px 16px; display:flex; gap:16px; align-items:center; flex-wrap:wrap; }
+  header h1 { font-size:18px; margin:0; }
+  header .doc { opacity:.85; font-size:14px; }
+  header .spazio { flex:1; }
+  button { font:inherit; padding:8px 14px; border:1px solid var(--bordo); border-radius:6px; background:#fff; cursor:pointer; }
+  label.bottone { font:inherit; padding:8px 14px; border:1px solid var(--bordo); border-radius:6px; background:#fff; color:#1a202c; cursor:pointer; display:inline-block; }
+  label.bottone.primario, button.primario { background:var(--verde); border-color:var(--verde); color:#fff; font-weight:600; }
+  button.piccolo { padding:2px 8px; font-size:13px; }
+  main { padding:16px; max-width:1100px; margin:0 auto; }
+  .inizio { background:#fff; border:1px solid var(--bordo); border-radius:8px; padding:24px; text-align:center; }
+  .inizio input[type=text] { font:inherit; padding:8px; width:260px; border:1px solid var(--bordo); border-radius:6px; }
+  .inizio p { margin:12px 0; }
+  .inizio .passo { font-weight:bold; margin-top:20px; }
+  .inizio .nota { color:#666; font-size:0.9em; }
+  .inizio label.bottone { display:inline-block; cursor:pointer; padding:10px 20px; border-radius:6px; font-size:1.05em; }
+  .sparo { display:flex; gap:12px; align-items:stretch; margin-bottom:12px; }
+  .sparo input { font-size:26px; padding:10px 14px; border:2px solid #1a202c; border-radius:8px; width:100%; }
+  .sparo input:focus { outline:3px solid #f6c453; }
+  .sparo button { white-space:nowrap; font-size:18px; }
+  #camera { margin-bottom:12px; border-radius:8px; overflow:hidden; background:#000; position:sticky; top:0; z-index:5; max-height:45vh; }
+  #camera video { display:block; width:100% !important; max-height:45vh; object-fit:cover; }
+  .velo { position:fixed; inset:0; background:rgba(0,0,0,.55); z-index:20; display:flex; align-items:center; justify-content:center; padding:16px; }
+  .popup { background:#fff; border-radius:14px; padding:20px; width:100%; max-width:420px; text-align:center; display:flex; flex-direction:column; gap:10px; }
+  .popup .cod { font-size:26px; font-weight:700; word-break:break-all; }
+  .popup .des { color:var(--grigio); min-height:1em; }
+  .popup .bolla { font-size:15px; text-transform:uppercase; letter-spacing:.03em; }
+  .popup .bolla.rosso { color:var(--rosso); font-weight:700; }
+  .popup .qta { font-size:72px; font-weight:700; line-height:1.1; }
+  .popup .mod { display:flex; gap:10px; align-items:stretch; justify-content:center; }
+  .popup .mod input { font-size:40px; width:150px; padding:6px 10px; text-align:center; border:2px solid #1a202c; border-radius:8px; }
+  .popup .mod button { font-size:34px; width:64px; font-weight:700; }
+  .popup button { font-size:20px; padding:14px; }
+  .popup #cOk { font-size:28px; padding:18px; }
+  .popup .err { color:var(--rosso); font-weight:600; min-height:1.2em; }
+  .avviso { padding:10px 14px; border-radius:8px; margin-bottom:12px; font-weight:600; }
+  .avviso.rosso { background:#fde3e3; color:#8f1d1d; }
+  .avviso.verde { background:#dcf5e6; color:#12643a; }
+  .avviso.giallo { background:#fff3c4; color:#8a6100; }
+  .conti { display:flex; gap:10px; margin-bottom:12px; flex-wrap:wrap; }
+  .conti span { background:#fff; border:1px solid var(--bordo); border-radius:20px; padding:4px 14px; font-weight:600; }
+  .conti .g { color:#8a6100; }
+  .popup .eti { font-weight:600; }
+  .popup #cAzz { font-size:15px; padding:8px; border:none; color:var(--rosso); text-decoration:underline; }
+  .conti .v { color:var(--verde); } .conti .r { color:var(--rosso); } .conti .a { color:var(--grigio); }
+  table { width:100%; border-collapse:collapse; background:#fff; border:1px solid var(--bordo); border-radius:8px; overflow:hidden; }
+  th, td { padding:8px 10px; text-align:left; border-bottom:1px solid var(--bordo); }
+  th { background:#eef0f3; font-size:13px; text-transform:uppercase; letter-spacing:.03em; }
+  td.n, th.n { text-align:right; font-variant-numeric:tabular-nums; }
+  #righe tr { cursor:pointer; }
+  tr.ok { background:#dcf5e6; } tr.diff { background:#fde3e3; } tr.parz { background:#fff3c4; } tr.attiva { outline:3px solid #f6c453; outline-offset:-3px; }
+  tr.parz td.stato { color:#8a6100; font-weight:700; }
+  tr.ok td.stato { color:#12643a; font-weight:700; } tr.diff td.stato { color:#8f1d1d; font-weight:700; }
+  h2 { font-size:15px; text-transform:uppercase; letter-spacing:.03em; margin:20px 0 8px; color:#8f1d1d; }
+  small.orig { display:block; color:var(--grigio); font-size:12px; }
+  tr.gruppo td { background:#1a202c; color:#fff; font-weight:600; font-size:14px; cursor:default; }
+  .popup .doc2 { font-weight:700; font-size:15px; }
+  .lista { display:flex; flex-direction:column; gap:8px; max-height:60vh; overflow:auto; text-align:left; }
+  .lista button { text-align:left; font-size:17px; padding:12px; }
+  .lista button small { display:block; color:var(--grigio); font-size:14px; margin-top:2px; }
+  .lista button.ok { background:#dcf5e6; } .lista button.parz { background:#fff3c4; } .lista button.diff { background:#fde3e3; }
+  .nascosto { display:none !important; }
+  @media (max-width:640px) {
+    main { padding:10px; }
+    header { padding:8px 10px; gap:8px; }
+    header h1 { font-size:16px; }
+    th, td { padding:7px 4px; font-size:13px; overflow-wrap:break-word; }
+    th { font-size:10px; letter-spacing:0; white-space:nowrap; }
+    td.stato { font-size:12px; }
+    .col-marca, .col-azzera { display:none; }
+    tr.gruppo td { font-size:12px; }
+    .sparo input { font-size:20px; }
+    .inizio input[type=text] { width:100%; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Carico a scansione</h1>
+  <span class="doc" id="doc"></span>
+  <span class="spazio"></span>
+  <label id="btnAggiungi" class="bottone nascosto" for="file">Aggiungi bolle</label>
+  <button id="btnChiudi" class="primario nascosto">Chiudi fornitore</button>
+  <button id="btnNuovo" class="nascosto">Svuota tutto</button>
+</header>
+<main>
+  <input type="file" id="file" accept=".csv,.txt" multiple class="nascosto">
+  <section id="inizio" class="inizio">
+    <div id="inizioFoglio" class="nascosto">
+      <p class="passo">Nessuna bolla in attesa</p>
+      <p class="nota">Le bolle arrivano nel foglio «Bolle in attesa»: appena ce ne sono compaiono qui da sole.</p>
+    </div>
+    <div id="inizioLocale">
+    <p class="passo">Carica le bolle in attesa</p>
+    <p><label class="bottone primario" for="file">Scegli le bolle…</label></p>
+    <p class="nota">Puoi sceglierne quante vuoi insieme (tieni premuto Cmd per selezionarne più di una, o Cmd+A per tutte).<br>
+       Il fornitore si prende dal nome del file: <b>bolla_autocom.csv</b> → <b>AUTOCOM</b>.</p>
+    <p class="nota">Solo per provare, senza file: <button id="btnDemo" class="piccolo">Bolle di prova</button></p>
+    </div>
+  </section>
+
+  <section id="lavoro" class="nascosto">
+    <div class="sparo">
+      <input id="sparo" placeholder="Spara o scrivi il codice catalogo" autocomplete="off" autocapitalize="characters" spellcheck="false">
+      <button id="btnCam" class="nascosto">Fotocamera</button>
+    </div>
+    <div id="camera" class="nascosto"></div>
+    <div id="avviso" class="avviso nascosto"></div>
+    <div class="conti">
+      <span class="v">Verdi <b id="nV">0</b></span>
+      <span class="g">Parziali <b id="nP">0</b></span>
+      <span class="r">In più <b id="nR">0</b></span>
+      <span class="a">Da sparare <b id="nA">0</b></span>
+      <span class="r">Non in bolla <b id="nX">0</b></span>
+    </div>
+    <table>
+      <thead><tr><th class="col-marca">Marca</th><th>Codice catalogo</th><th>Descrizione</th><th class="n">Bolla</th><th class="n">Arrivati</th><th>Stato</th><th class="col-azzera"></th></tr></thead>
+      <tbody id="righe"></tbody>
+    </table>
+    <div id="boxExtra" class="nascosto">
+      <h2>Non in bolla</h2>
+      <table>
+        <thead><tr><th>Codice sparato</th><th class="n">Arrivati</th><th></th></tr></thead>
+        <tbody id="extra"></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+
+<div id="conferma" class="velo nascosto">
+  <div class="popup">
+    <div class="cod" id="cCod"></div>
+    <div class="des" id="cDes"></div>
+    <div class="doc2" id="cDoc"></div>
+    <div class="bolla" id="cBolla"></div>
+    <div class="qta" id="cMostra"></div>
+    <div class="eti nascosto" id="cEti"></div>
+    <div class="mod nascosto" id="cModBox">
+      <button id="cMeno">&minus;</button>
+      <input id="cQta" inputmode="decimal" autocomplete="off">
+      <button id="cPiu">+</button>
+    </div>
+    <div class="err" id="cErr"></div>
+    <button id="cOk" class="primario">OK</button>
+    <button id="cMod">Modifica quantità</button>
+    <button id="cNo">Annulla</button>
+    <button id="cAzz" class="nascosto">Azzera questa riga</button>
+  </div>
+</div>
+<div id="scelta" class="velo nascosto">
+  <div class="popup">
+    <div class="cod" id="sCod"></div>
+    <div class="bolla" id="sTesta"></div>
+    <div class="lista" id="sLista"></div>
+    <button id="sNo">Annulla</button>
+  </div>
+</div>
+<script src="html5-qrcode.min.js"></script>
+
+<script>
+"use strict";
+/* ---------- funzioni pure ---------- */
+const CHIAVE = "carico-scansione-v2";
+const INTESTAZIONE = ["DATA DOCUMENTO","NUMERO DOCUMENTO","MARCA","CODICE","DESCRIZIONE","QTA","PREZZO","SCONTO"];
+
+/* Codice catalogo: il codice tutto attaccato, senza punteggiatura né caratteri speciali (038/85 → 03885). È quello con cui si cerca. */
+function norm(s) { return String(s == null ? "" : s).toUpperCase().replace(/[^A-Z0-9]/g, ""); }
+function num(s) {
+  let t = String(s == null ? "" : s).trim().replace(/\s/g, "");
+  if (t === "") return NaN;
+  if (t.includes(",")) t = t.replace(/\./g, "").replace(",", ".");
+  return /^-?\d+(\.\d+)?$/.test(t) ? parseFloat(t) : NaN;
+}
+function fmt(n, dec) {
+  if (dec == null) return Number.isInteger(n) ? String(n) : String(n).replace(".", ",");
+  return n.toFixed(dec).replace(".", ",");
+}
+function campoCsv(s) {
+  s = String(s == null ? "" : s);
+  return /[;"\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+function leggiCsv(testo) {
+  testo = testo.replace(/^﻿/, "");
+  const righe = []; let riga = [], campo = "", virg = false;
+  for (let i = 0; i < testo.length; i++) {
+    const c = testo[i];
+    if (virg) {
+      if (c === '"') { if (testo[i + 1] === '"') { campo += '"'; i++; } else virg = false; }
+      else campo += c;
+    } else if (c === '"') virg = true;
+    else if (c === ";") { riga.push(campo); campo = ""; }
+    else if (c === "\n" || c === "\r") {
+      if (c === "\r" && testo[i + 1] === "\n") i++;
+      riga.push(campo); campo = "";
+      if (riga.some(x => x.trim() !== "")) righe.push(riga);
+      riga = [];
+    } else campo += c;
+  }
+  riga.push(campo);
+  if (riga.some(x => x.trim() !== "")) righe.push(riga);
+  return righe;
+}
+/* Bolla nel formato dell'import SirJ: DATA DOCUMENTO;NUMERO DOCUMENTO;MARCA;CODICE;DESCRIZIONE;QTA;PREZZO;SCONTO
+   Colonna in più facoltativa: BARCODE (codice a barre sul pezzo, se diverso dal codice fornitore). */
+/* Fornitore dal nome del file: «bolla_autocom.csv» → «AUTOCOM». */
+function fornitoreDaNome(nome) {
+  return String(nome || "").replace(/\.[^.]*$/, "").replace(/^(bolla|bolle|ddt)[\s_\-]*/i, "").replace(/[_\-]+/g, " ").trim().toUpperCase() || "FORNITORE";
+}
+/* Colonna in più facoltativa: FORNITORE (se manca vale quello passato, preso dal nome del file). */
+function leggiBolla(testo, fornitore) {
+  const m = leggiCsv(testo);
+  if (m.length < 2) throw new Error("File vuoto");
+  const testa = m[0].map(x => x.trim().toUpperCase());
+  const col = nome => testa.indexOf(nome);
+  const mancanti = ["CODICE", "QTA"].filter(n => col(n) < 0);
+  if (mancanti.length) throw new Error("Colonne mancanti: " + mancanti.join(", "));
+  const v = (r, nome) => { const i = col(nome); return i < 0 ? "" : (r[i] || "").trim(); };
+  const righe = [];
+  m.slice(1).forEach((r, k) => {
+    const q = num(v(r, "QTA"));
+    if (v(r, "CODICE") === "") return;
+    if (isNaN(q)) throw new Error("Quantità non leggibile alla riga " + (k + 2));
+    righe.push({
+      fornitore: (v(r, "FORNITORE") || fornitore || "FORNITORE").toUpperCase(),
+      data: v(r, "DATA DOCUMENTO"), numero: v(r, "NUMERO DOCUMENTO"), marca: v(r, "MARCA"),
+      codice: v(r, "CODICE"), descrizione: v(r, "DESCRIZIONE"), qta: q,
+      prezzo: v(r, "PREZZO"), sconto: v(r, "SCONTO"), barcode: v(r, "BARCODE"), arrivati: null
+    });
+  });
+  if (!righe.length) throw new Error("Nessuna riga");
+  return righe;
+}
+function statoRiga(r) { return r.arrivati == null ? "attesa" : (r.arrivati === r.qta ? "ok" : (r.arrivati < r.qta ? "parz" : "diff")); }
+/* Tutte le righe (di tutte le bolle) con quel codice: prima quelle ancora da completare. */
+function trovaRighe(righe, sparato) {
+  const k = norm(sparato);
+  if (!k) return [];
+  const uguali = righe.map((r, i) => (norm(r.codice) === k || (r.barcode && norm(r.barcode) === k)) ? i : -1).filter(i => i >= 0);
+  const fatto = i => { const s = statoRiga(righe[i]); return s === "ok" || s === "diff" ? 1 : 0; };
+  return uguali.sort((a, b) => fatto(a) - fatto(b) || a - b);
+}
+function ordina(righe) {
+  return righe.map((r, i) => [r, i]).sort((x, y) => x[0].fornitore.localeCompare(y[0].fornitore) ||
+    x[0].numero.localeCompare(y[0].numero, undefined, { numeric: true }) || x[1] - y[1]).map(x => x[0]);
+}
+/* File per «Import Documenti Carico Merce da File CSV»: si carica quello che è arrivato davvero. */
+function csvCarico(righe) {
+  const out = [INTESTAZIONE.join(";")];
+  righe.filter(r => r.arrivati > 0).forEach(r => {
+    out.push([r.data, r.numero, r.marca, r.codice, r.descrizione, fmt(r.arrivati, 2), r.prezzo, r.sconto].map(campoCsv).join(";"));
+  });
+  return out.join("\r\n") + "\r\n";
+}
+function csvDifferenze(righe, extra) {
+  const out = ["TIPO;FORNITORE;DDT;MARCA;CODICE;DESCRIZIONE;BOLLA;ARRIVATI;DIFFERENZA"];
+  righe.forEach(r => {
+    const a = r.arrivati == null ? 0 : r.arrivati;
+    if (a === r.qta) return;
+    const tipo = r.arrivati == null || a === 0 ? "NON ARRIVATO" : (a > r.qta ? "IN PIU" : "IN MENO");
+    out.push([tipo, r.fornitore, r.numero, r.marca, r.codice, r.descrizione, fmt(r.qta), fmt(a), fmt(a - r.qta)].map(campoCsv).join(";"));
+  });
+  extra.forEach(x => out.push(["NON IN BOLLA", "", "", "", x.codice, "", "0", fmt(x.arrivati), fmt(x.arrivati)].map(campoCsv).join(";")));
+  return out.length > 1 ? out.join("\r\n") + "\r\n" : "";
+}
+
+/* ---------- pagina ---------- */
+if (typeof document !== "undefined") (function () {
+  const $ = id => document.getElementById(id);
+  let st = null;      // { righe (di tutte le bolle caricate, ognuna col suo fornitore), extra }
+  let scelta = null;  // elenco aperto «in quale bolla?» / «quale fornitore?»: { voci:[{azione}] }
+  let attiva = null;  // { tipo:"riga"|"extra", i }
+  let cam = null;     // lettore della fotocamera, se accesa
+  let rumore = false; // tasti arrivati a popup aperto senza passare da «Modifica» (lettore sparato per sbaglio)
+  const ultimo = { codice: "", t: 0 };  // per non rileggere subito lo stesso codice dalla fotocamera
+  /* Aperta come app del foglio Google (Apps Script): le bolle si leggono dal foglio e ogni conferma si scrive lì. */
+  const gs = typeof google !== "undefined" && google.script && google.script.run ? google.script.run : null;
+  /* Aperta da un indirizzo nostro (serve per la fotocamera del telefono: dentro Google è bloccata): il collegamento al foglio
+     arriva nel link, dopo il cancelletto (…/#CODICE), e resta ricordato sul telefono. La pagina da sola non contiene nessun dato. */
+  const remoto = (() => {
+    if (gs || !/^https?:$/.test(location.protocol)) return null;
+    const ok = x => /^[A-Za-z0-9_-]{30,}$/.test(x || "");
+    let id = decodeURIComponent((location.hash || "").replace(/^#/, ""));
+    try { if (ok(id)) localStorage.setItem("carico-foglio", id); else id = localStorage.getItem("carico-foglio") || ""; } catch (e) {}
+    return ok(id) ? "https://script.google.com/macros/s/" + id + "/exec" : null;
+  })();
+  const foglio = gs || remoto;
+  const server = gs
+    ? (nome, ...arg) => new Promise((ok, ko) => gs.withSuccessHandler(ok).withFailureHandler(ko)[nome](...arg))
+    : (nome, ...arg) => fetch(remoto + "?azione=pagina&f=" + encodeURIComponent(nome) + "&a=" + encodeURIComponent(JSON.stringify(arg)) + "&t=" + Date.now(), { redirect: "follow" })
+        .then(r => { if (!r.ok) throw new Error("risposta " + r.status); return r.json(); })
+        .then(j => { if (!j || !j.ok) throw new Error((j && j.errore) || "risposta non valida"); return j.ris; });
+  let operatore = "";
+  try { operatore = localStorage.getItem("carico-operatore") || ""; } catch (e) {}
+  const tastiera = window.matchMedia && matchMedia("(pointer:fine)").matches;  // PC con lettore: il cursore torna da solo nel campo
+
+  const DEMO = [
+    ["PROVA A", "DATA DOCUMENTO;NUMERO DOCUMENTO;MARCA;CODICE;DESCRIZIONE;QTA;PREZZO;SCONTO\r\n" +
+      "23/11/2026;A1;PUR;LS715;FILTRO OLIO;10,00;8,00;5,00\r\n23/11/2026;A1;PUR;A1004;FILTRO ARIA;5,00;15,00;5,00"],
+    ["PROVA B", "DATA DOCUMENTO;NUMERO DOCUMENTO;MARCA;CODICE;DESCRIZIONE;QTA;PREZZO;SCONTO\r\n" +
+      "23/11/2026;B7;PUR;LS715;FILTRO OLIO;4,00;8,20;0,00\r\n23/11/2026;B7;UFI;2312900;FILTRO OLIO;8,00;9,00;0,00"]
+  ];
+
+  async function caricaDalFoglio() {
+    try {
+      const righe = await server("elenco");
+      if (attiva || scelta) return;          // l'operaio sta confermando: si aggiorna al giro dopo
+      const extra = st ? st.extra : [];
+      st = righe.length || extra.length ? { righe: ordina(righe), extra } : null;
+      disegna();
+    } catch (e) { avviso("Foglio non raggiungibile: " + (e && e.message ? e.message : e), "rosso"); }
+  }
+  function invia(id, modo, q) {
+    if (!foglio) return;
+    server("segna", id, modo, q, operatore).then(res => {
+      const r = st && st.righe.find(x => x.id === res.id);
+      if (r) { r.arrivati = res.arrivati; if (!attiva && !scelta) disegna(); }
+    }).catch(e => avviso("ATTENZIONE: NON SALVATO NEL FOGLIO (" + (e && e.message ? e.message : e) + "). Riprova.", "rosso"));
+  }
+  function salva() { try { st ? localStorage.setItem(CHIAVE, JSON.stringify(st)) : localStorage.removeItem(CHIAVE); } catch (e) {} }
+  function avviso(testo, colore) {
+    const a = $("avviso");
+    if (!testo) { a.className = "avviso nascosto"; return; }
+    a.textContent = testo; a.className = "avviso " + colore;
+  }
+  function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+
+  function disegna() {
+    const aperta = !!st;
+    $("inizio").classList.toggle("nascosto", aperta);
+    $("lavoro").classList.toggle("nascosto", !aperta);
+    $("btnChiudi").classList.toggle("nascosto", !aperta);
+    $("btnAggiungi").classList.toggle("nascosto", !aperta || !!foglio);
+    $("inizioFoglio").classList.toggle("nascosto", !foglio); $("inizioLocale").classList.toggle("nascosto", !!foglio);
+    $("btnNuovo").classList.toggle("nascosto", !aperta || !!foglio);
+    if (!aperta) { $("doc").textContent = ""; return; }
+    const ddt = new Set(st.righe.map(x => x.fornitore + "|" + x.numero)), forn = new Set(st.righe.map(x => x.fornitore));
+    $("doc").textContent = ddt.size + (ddt.size === 1 ? " bolla" : " bolle") + " · " + forn.size + (forn.size === 1 ? " fornitore" : " fornitori") + (foglio && operatore ? " · " + operatore : "");
+    let v = 0, r = 0, a = 0, pz = 0, prima = "";
+    $("righe").innerHTML = st.righe.map((x, i) => {
+      const g = x.fornitore + "|" + x.numero;
+      const testa = g === prima ? "" : `<tr class="gruppo"><td colspan="7">${esc(x.fornitore)} · DDT ${esc(x.numero || "?")}${x.data ? " · " + esc(x.data) : ""}</td></tr>`;
+      prima = g;
+      const s = statoRiga(x);
+      if (s === "ok") v++; else if (s === "diff") r++; else if (s === "parz") pz++; else a++;
+      const d = x.arrivati == null ? "" : x.arrivati - x.qta;
+      const scritta = s === "ok" ? "OK" : s === "diff" ? "+" + fmt(d) : s === "parz" ? "mancano " + fmt(-d) : "";
+      const sel = attiva && attiva.tipo === "riga" && attiva.i === i ? " attiva" : "";
+      return testa + `<tr data-riga="${i}" class="${s === "attesa" ? "" : s}${sel}"><td class="col-marca">${esc(x.marca)}</td><td><b>${esc(norm(x.codice))}</b>${norm(x.codice) === x.codice.toUpperCase() ? "" : `<small class="orig">${esc(x.codice)}</small>`}</td><td>${esc(x.descrizione)}</td>` +
+        `<td class="n">${fmt(x.qta)}</td><td class="n">${x.arrivati == null ? "" : fmt(x.arrivati)}</td><td class="stato">${scritta}</td>` +
+        `<td class="col-azzera">${x.arrivati == null ? "" : `<button class="piccolo" data-azzera="${i}">Azzera</button>`}</td></tr>`;
+    }).join("");
+    $("extra").innerHTML = st.extra.map((x, i) =>
+      `<tr class="diff"><td><b>${esc(x.codice)}</b></td><td class="n">${fmt(x.arrivati)}</td><td><button class="piccolo" data-togli="${i}">Togli</button></td></tr>`).join("");
+    $("boxExtra").classList.toggle("nascosto", !st.extra.length);
+    $("nV").textContent = v; $("nP").textContent = pz; $("nR").textContent = r; $("nA").textContent = a; $("nX").textContent = st.extra.length;
+  }
+
+  /* Aggiunge bolle (file = [[fornitore, testo, nome file]]). Tutte entrano «in bianco»: da lavorare. */
+  function aggiungi(file) {
+    if (!st) st = { righe: [], extra: [] };
+    const gia = new Set(st.righe.map(x => x.fornitore + "|" + x.numero));
+    const ok = [], saltate = [], errori = [];
+    file.forEach(([forn, testo, nome]) => {
+      let righe;
+      try { righe = leggiBolla(testo, forn); } catch (e) { errori.push((nome || forn) + ": " + e.message); return; }
+      const nuove = righe.filter(x => !gia.has(x.fornitore + "|" + x.numero));
+      if (!nuove.length) { saltate.push(nome || forn); return; }
+      st.righe.push(...nuove); ok.push(forn);
+    });
+    st.righe = ordina(st.righe);
+    if (!st.righe.length && !st.extra.length) st = null;
+    attiva = null; salva(); disegna();
+    if (errori.length) alert("Non letti:\n" + errori.join("\n"));
+    if (st) avviso((ok.length ? "Caricate: " + [...new Set(ok)].join(", ") + ". " : "") + (saltate.length ? "Già presenti, saltate: " + saltate.join(", ") : ""), ok.length ? "verde" : "giallo");
+    if (st && tastiera) $("sparo").focus();
+  }
+
+  function modifica(valore) {
+    $("cMostra").classList.add("nascosto"); $("cMod").classList.add("nascosto");
+    $("cModBox").classList.remove("nascosto"); $("cEti").classList.remove("nascosto");
+    $("cOk").textContent = "Conferma";
+    if ($("cMostra").textContent) $("cBolla").textContent += " " + $("cMostra").textContent;
+    const q = $("cQta"); q.value = valore != null ? valore : q.dataset.scrivi;
+    q.focus(); if (valore == null) q.select();
+  }
+  /* Apre il popup. modo "tot": la quantità scritta è quella che c'è adesso; modo "agg": sono pezzi che si aggiungono a quelli già segnati. */
+  function popup(o) {
+    attiva = { tipo: o.tipo, i: o.i, modo: o.modo }; rumore = false;
+    if (document.activeElement) document.activeElement.blur();
+    $("cCod").textContent = o.codice; $("cDes").textContent = o.descrizione || ""; $("cDoc").textContent = o.doc || "";
+    $("cBolla").textContent = o.testa; $("cBolla").classList.toggle("rosso", o.tipo !== "riga");
+    $("cMostra").textContent = o.grande; $("cOk").textContent = o.ok; $("cMod").textContent = o.altro; $("cEti").textContent = o.eti;
+    $("cErr").textContent = "";
+    const q = $("cQta"); q.value = fmt(o.valoreOk); q.dataset.proposta = fmt(o.valoreOk); q.dataset.scrivi = o.scrivi;
+    $("cMostra").classList.remove("nascosto"); $("cMod").classList.remove("nascosto");
+    $("cModBox").classList.add("nascosto"); $("cEti").classList.add("nascosto");
+    $("cNo").classList.toggle("nascosto", !!o.senzaAnnulla); $("cAzz").classList.toggle("nascosto", !o.azzera);
+    $("conferma").classList.remove("nascosto");
+    disegna();
+    if (o.tipo !== "riga") modifica();   // non in bolla: la quantità va scritta
+  }
+  function chiediRiga(i) {
+    const r = st.righe[i], n = fmt(r.qta), base = { tipo: "riga", i, codice: norm(r.codice), descrizione: r.descrizione, doc: r.fornitore + " · DDT " + (r.numero || "?") };
+    if (r.arrivati == null)            // mai sparata: «in bolla ce ne sono N, confermi?»
+      popup({ ...base, modo: "tot", testa: "Attenzione: in bolla ce ne sono", grande: n, ok: "Confermo, ci sono tutti e " + n,
+        altro: "Per ora ne ho di meno (o di più)", eti: "Quanti ne hai adesso?", valoreOk: r.qta, scrivi: n });
+    else if (r.arrivati < r.qta) {     // segnata in parte: «sono arrivati gli altri M»
+      const m = fmt(r.qta - r.arrivati);
+      popup({ ...base, modo: "agg", testa: "In bolla " + n + " · segnati " + fmt(r.arrivati) + " · mancano", grande: m, ok: m === "1" ? "È arrivato quello che mancava" : "Sono arrivati gli altri " + m,
+        altro: "Ne sono arrivati solo alcuni", eti: "Quanti ne sono arrivati in più?", valoreOk: r.qta - r.arrivati, scrivi: m, azzera: true });
+    } else                             // già completa (o in più)
+      popup({ ...base, modo: "agg", testa: "In bolla " + n + " · già segnati", grande: fmt(r.arrivati), ok: "OK",
+        altro: "Ne ho trovati altri", eti: "Quanti ne hai trovati in più?", valoreOk: 0, scrivi: "1", azzera: true, senzaAnnulla: true });
+  }
+  function apriScelta(cod, testa, voci) {
+    scelta = { voci }; if (document.activeElement) document.activeElement.blur();
+    $("sCod").textContent = cod; $("sTesta").textContent = testa;
+    $("sLista").innerHTML = voci.map((x, k) => `<button data-voce="${k}" class="${x.classe || ""}"><b>${k < 9 ? (k + 1) + ". " : ""}${esc(x.titolo)}</b><small>${esc(x.sotto || "")}</small></button>`).join("");
+    $("scelta").classList.remove("nascosto");
+  }
+  function chiudiScelta() { scelta = null; $("scelta").classList.add("nascosto"); }
+  function scegli(k) {
+    const v = scelta && scelta.voci[k]; if (!v) return;
+    chiudiScelta(); v.azione();
+  }
+  function chiediExtra(j, codice) {
+    popup({ tipo: "extra", i: j, modo: "tot", codice, testa: "Non è in nessuna bolla", grande: "", ok: "Conferma", altro: "", eti: "Quanti sono?",
+      valoreOk: st.extra[j].arrivati || 1, scrivi: fmt(st.extra[j].arrivati || 1) });
+  }
+  function chiudiQta() {
+    attiva = null; ultimo.t = Date.now();
+    $("conferma").classList.add("nascosto"); disegna();
+    if (tastiera && !cam) $("sparo").focus();
+  }
+  function passo(d) {
+    const q = num($("cQta").value); const n = Math.max(0, (isNaN(q) ? 0 : q) + d);
+    $("cQta").value = fmt(n); $("cErr").textContent = "";
+  }
+
+  async function fotocamera() {
+    const box = $("camera");
+    if (cam) { const c = cam; cam = null; try { await c.stop(); c.clear(); } catch (e) {} box.classList.add("nascosto"); $("btnCam").textContent = "Fotocamera"; return; }
+    if (!window.isSecureContext) { avviso("La fotocamera funziona solo se la pagina è aperta in https", "rosso"); return; }
+    box.classList.remove("nascosto"); avviso("");
+    const c = new Html5Qrcode("camera", { verbose: false });
+    try {
+      await c.start({ facingMode: "environment" },
+        { fps: 10, qrbox: (w, h) => ({ width: Math.max(60, Math.floor(w * 0.9)), height: Math.max(60, Math.floor(Math.min(h * 0.6, w * 0.5))) }) },
+        letto, () => {});
+      cam = c; $("btnCam").textContent = "Spegni";
+    } catch (e) {
+      box.classList.add("nascosto");
+      avviso("Fotocamera non disponibile: " + (e && e.message ? e.message : e), "rosso");
+    }
+  }
+  function letto(testo) {
+    if (!st || attiva || scelta) return;             // popup aperto: non si legge
+    if (norm(testo) === ultimo.codice && Date.now() - ultimo.t < 2500) return;
+    if (navigator.vibrate) navigator.vibrate(80);
+    sparato(testo);
+  }
+
+  function sparato(codice) {
+    codice = codice.trim();
+    if (!codice) return;
+    ultimo.codice = norm(codice);
+    avviso("");
+    const trovate = trovaRighe(st.righe, codice);
+    if (trovate.length === 1) { chiediRiga(trovate[0]); return; }
+    if (trovate.length > 1) {   // lo stesso codice è in più bolle: sceglie l'operatore
+      apriScelta(codice, "È in " + trovate.length + " righe di bolla: quale stai sparando?", trovate.map(i => {
+        const r = st.righe[i], s = statoRiga(r);
+        return { titolo: r.fornitore + " · DDT " + (r.numero || "?"), classe: s === "attesa" ? "" : s,
+          sotto: (r.descrizione ? r.descrizione + " · " : "") + "in bolla " + fmt(r.qta) + (r.arrivati == null ? "" : " · segnati " + fmt(r.arrivati)),
+          azione: () => chiediRiga(i) };
+      }));
+      return;
+    }
+    let j = st.extra.findIndex(x => norm(x.codice) === norm(codice));
+    if (j < 0) { st.extra.push({ codice, arrivati: 0 }); j = st.extra.length - 1; }
+    avviso("NON IN NESSUNA BOLLA: " + codice, "rosso");
+    chiediExtra(j, codice);
+  }
+
+  function conferma() {
+    const grezzo = $("cQta").value.trim();
+    const q = num(grezzo);
+    // un codice sparato per sbaglio nel campo quantità non deve diventare una quantità
+    if (rumore) {
+      rumore = false; $("cQta").value = $("cQta").dataset.proposta;
+      $("cErr").textContent = "Prima conferma questa quantità"; return;
+    }
+    if (isNaN(q) || q < 0 || grezzo.replace(/\D/g, "").length > 5) {
+      $("cErr").textContent = "Quantità non valida: " + grezzo;
+      modifica(""); return;
+    }
+    if (attiva.tipo === "riga") {
+      const r = st.righe[attiva.i];
+      const tot = attiva.modo === "agg" ? (r.arrivati || 0) + q : q;
+      r.arrivati = tot;
+      invia(r.id, attiva.modo, q);
+      if (tot === r.qta) avviso(r.codice + " completo: " + fmt(tot) + " di " + fmt(r.qta), "verde");
+      else if (tot < r.qta) avviso(r.codice + ": segnati " + fmt(tot) + " di " + fmt(r.qta) + ", mancano " + fmt(r.qta - tot), "giallo");
+      else avviso(r.codice + ": in bolla " + fmt(r.qta) + ", arrivati " + fmt(tot) + " (+" + fmt(tot - r.qta) + ")", "rosso");
+    } else {
+      if (q === 0) st.extra.splice(attiva.i, 1); else st.extra[attiva.i].arrivati = q;
+      if (foglio && q > 0) server("nonInBolla", st.extra[attiva.i].codice, q, operatore)
+        .catch(e => avviso("ATTENZIONE: NON SALVATO NEL FOGLIO (" + (e && e.message ? e.message : e) + ")", "rosso"));
+    }
+    salva(); chiudiQta();
+  }
+  function annulla() {
+    if (attiva && attiva.tipo === "extra" && !st.extra[attiva.i].arrivati) st.extra.splice(attiva.i, 1);
+    avviso(""); salva(); chiudiQta();
+  }
+
+  function scarica(nome, testo) {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([testo], { type: "text/csv;charset=utf-8" }));
+    a.download = nome; document.body.appendChild(a); a.click(); a.remove();
+  }
+  function scaricaTutti(file) {   // file = [File]
+    if (!tastiera && navigator.canShare && navigator.canShare({ files: file })) {
+      navigator.share({ files: file, title: "Carico merce" }).catch(() => {});
+    } else file.forEach((f, k) => setTimeout(() => f.text().then(t => scarica(f.name, t)), k * 400));
+  }
+  function nomeFile(s) { return String(s || "").replace(/[^\w\-]+/g, "_"); }
+  /* Un file di carico per ogni DDT (in SirJ ogni carico ha un solo «Rif. Fornitore»), un file differenze per fornitore. */
+  function chiudi(forn) {
+    const righe = st.righe.filter(r => r.fornitore === forn);
+    const mancano = righe.filter(r => r.arrivati == null).length;
+    if (mancano && !confirm(forn + ": " + mancano + (mancano === 1 ? " riga non è ancora stata sparata" : " righe non sono ancora state sparate") + " (finiranno nelle differenze come NON ARRIVATO). Chiudere lo stesso?")) return;
+    const file = [];
+    [...new Set(righe.map(r => r.numero))].forEach(n => {
+      const rr = righe.filter(r => r.numero === n);
+      if (rr.some(r => r.arrivati > 0)) file.push(new File([csvCarico(rr)], "carico_" + nomeFile(forn) + "_" + nomeFile(n || "bolla") + ".csv", { type: "text/csv" }));
+    });
+    const diff = csvDifferenze(righe, []);
+    if (diff) file.push(new File([diff], "differenze_" + nomeFile(forn) + ".csv", { type: "text/csv" }));
+    if (!file.length) { avviso(forn + ": niente da scaricare", "giallo"); return; }
+    scaricaTutti(file);
+    setTimeout(() => {
+      if (!confirm("Scaricati " + file.length + " file di " + forn + ". Togliere " + forn + " dall'elenco delle bolle in attesa?")) return;
+      if (foglio) {
+        server("chiudiFornitore", forn, operatore).then(() => { avviso(forn + " chiuso.", "verde"); caricaDalFoglio(); })
+          .catch(e => avviso("Chiusura non salvata nel foglio: " + (e && e.message ? e.message : e), "rosso"));
+        return;
+      }
+      st.righe = st.righe.filter(r => r.fornitore !== forn);
+      if (!st.righe.length && !st.extra.length) st = null;
+      salva(); disegna(); avviso(forn + " chiuso.", "verde");
+    }, file.length * 400 + 300);
+  }
+  function chiudiExtra() {
+    scaricaTutti([new File([csvDifferenze([], st.extra)], "non_in_bolla.csv", { type: "text/csv" })]);
+    setTimeout(() => {
+      if (!confirm("Scaricato non_in_bolla.csv. Togliere i pezzi non in bolla dall'elenco?")) return;
+      st.extra = []; if (!st.righe.length) st = null; salva(); disegna();
+    }, 700);
+  }
+  function chiudiFornitore() {
+    const voci = [...new Set(st.righe.map(r => r.fornitore))].map(f => {
+      const rr = st.righe.filter(r => r.fornitore === f), n = new Set(rr.map(r => r.numero)).size;
+      const fatte = rr.filter(r => r.arrivati != null).length;
+      return { titolo: f, classe: fatte === rr.length ? "ok" : (fatte ? "parz" : ""),
+        sotto: n + " DDT · " + fatte + " di " + rr.length + " righe sparate", azione: () => chiudi(f) };
+    });
+    if (st.extra.length) voci.push({ titolo: "Pezzi non in nessuna bolla", classe: "diff", sotto: st.extra.length + " codici", azione: chiudiExtra });
+    apriScelta("Chiudi fornitore", "Quale fornitore hai finito?", voci);
+  }
+
+  $("file").addEventListener("change", async e => {
+    const lista = [...e.target.files]; e.target.value = "";
+    if (!lista.length) return;
+    const letti = await Promise.all(lista.map(async f => {
+      const buf = await f.arrayBuffer(); let testo;
+      try { testo = new TextDecoder("utf-8", { fatal: true }).decode(buf); }
+      catch (x) { testo = new TextDecoder("windows-1252").decode(buf); }
+      return [fornitoreDaNome(f.name), testo, f.name];
+    }));
+    aggiungi(letti);
+  });
+  $("btnDemo").addEventListener("click", () => aggiungi(DEMO));
+  $("sparo").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); e.stopPropagation(); const c = e.target.value; e.target.value = ""; sparato(c); } });
+  document.addEventListener("keydown", e => {
+    if (scelta) {
+      if (e.key === "Escape") { e.preventDefault(); chiudiScelta(); avviso(""); if (tastiera) $("sparo").focus(); }
+      else if (/^[1-9]$/.test(e.key)) { e.preventDefault(); scegli(+e.key - 1); }
+      return;
+    }
+    if (!attiva) return;
+    if (e.key === "Enter") { e.preventDefault(); conferma(); }
+    else if (e.key === "Escape") { e.preventDefault(); annulla(); }
+    else if (document.activeElement !== $("cQta") && e.key.length === 1 && !e.ctrlKey && !e.metaKey) {
+      e.preventDefault();
+      if (/[0-9]/.test(e.key) && !rumore) modifica(e.key);   // PC: si scrive subito la quantità vera
+      else rumore = true;
+    } else if (document.activeElement === $("cQta") && /^[a-zA-Z]$/.test(e.key)) { e.preventDefault(); rumore = true; }
+  });
+  $("cQta").addEventListener("input", () => { $("cErr").textContent = ""; });
+  $("cMod").addEventListener("click", () => modifica());
+  $("cAzz").addEventListener("click", () => { const r = st.righe[attiva.i]; r.arrivati = null; invia(r.id, "tot", null); avviso(""); salva(); chiudiQta(); });
+  $("cMeno").addEventListener("click", () => passo(-1));
+  $("cPiu").addEventListener("click", () => passo(1));
+  $("btnCam").addEventListener("click", fotocamera);
+  if (typeof Html5Qrcode !== "undefined") $("btnCam").classList.remove("nascosto");
+  $("cOk").addEventListener("click", conferma);
+  $("cNo").addEventListener("click", annulla);
+  $("btnChiudi").addEventListener("click", () => { if (!attiva && !scelta) chiudiFornitore(); });
+  $("sLista").addEventListener("click", e => { const b = e.target.closest("button[data-voce]"); if (b) scegli(+b.dataset.voce); });
+  $("sNo").addEventListener("click", () => { chiudiScelta(); avviso(""); if (tastiera) $("sparo").focus(); });
+  $("btnNuovo").addEventListener("click", () => {
+    if (!confirm("Togliere TUTTE le bolle caricate? Quello che non hai scaricato si perde.")) return;
+    if (cam) fotocamera();
+    st = null; attiva = null; chiudiScelta(); salva(); $("conferma").classList.add("nascosto"); avviso(""); disegna();
+  });
+  $("lavoro").addEventListener("click", e => {
+    const b = e.target.closest("button");
+    if (!b) {   // tocco sulla riga: apre il popup anche senza sparare (codice a barre rovinato)
+      const tr = e.target.closest("tr[data-riga]"); if (!tr || attiva || scelta) return;
+      ultimo.codice = norm(st.righe[+tr.dataset.riga].codice); avviso("");
+      chiediRiga(+tr.dataset.riga);
+      return;
+    }
+    if (b.dataset.azzera != null) { const r = st.righe[+b.dataset.azzera]; r.arrivati = null; invia(r.id, "tot", null); salva(); chiudiQta(); }
+    else if (b.dataset.togli != null) { st.extra.splice(+b.dataset.togli, 1); salva(); chiudiQta(); }
+  });
+
+  if (foglio) {
+    while (!operatore) operatore = (prompt("Come ti chiami? (resta salvato su questo dispositivo)") || "").trim().toUpperCase();
+    try { localStorage.setItem("carico-operatore", operatore); } catch (e) {}
+    st = null; disegna(); caricaDalFoglio();
+    setInterval(() => { if (!attiva && !scelta) caricaDalFoglio(); }, 20000);   // novità degli altri operai e bolle nuove
+  } else {
+    try { const s = localStorage.getItem(CHIAVE); if (s) st = JSON.parse(s); } catch (e) { st = null; }
+    disegna();
+  }
+  if (st && tastiera) $("sparo").focus();
+})();
+if (typeof module !== "undefined") module.exports = { norm, num, fmt, leggiCsv, fornitoreDaNome, leggiBolla, statoRiga, trovaRighe, ordina, csvCarico, csvDifferenze };
+</script>
+</body>
+</html>
