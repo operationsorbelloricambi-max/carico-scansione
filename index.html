@@ -28,6 +28,7 @@
   .sparo input { font-size:26px; padding:10px 14px; border:2px solid #1a202c; border-radius:8px; width:100%; }
   .sparo input:focus { outline:3px solid #f6c453; }
   .sparo button { white-space:nowrap; font-size:18px; }
+  button.acceso { background:#f5c400; color:#000; border-color:#b89300; }
   #camera { margin-bottom:12px; border-radius:8px; overflow:hidden; background:#000; position:sticky; top:0; z-index:5; max-height:45vh; }
   #camera video { display:block; width:100% !important; max-height:45vh; object-fit:cover; }
   .velo { position:fixed; inset:0; background:rgba(0,0,0,.55); z-index:20; display:flex; align-items:center; justify-content:center; padding:16px; }
@@ -79,7 +80,9 @@
     td.stato { font-size:12px; }
     .col-marca, .col-azzera { display:none; }
     tr.gruppo td { font-size:12px; }
-    .sparo input { font-size:20px; }
+    .sparo { flex-wrap:wrap; gap:8px; }
+    .sparo input { font-size:20px; flex:1 1 100%; }
+    .sparo button { flex:1 1 auto; }
     .inizio input[type=text] { width:100%; }
   }
 </style>
@@ -113,6 +116,8 @@
     <div class="sparo">
       <input id="sparo" placeholder="Spara o scrivi il codice catalogo" autocomplete="off" autocapitalize="characters" spellcheck="false">
       <button id="btnCam" class="nascosto">Fotocamera</button>
+      <button id="btnFlash" class="nascosto">Flash</button>
+      <button id="btnZoom" class="nascosto">Zoom</button>
     </div>
     <div id="camera" class="nascosto"></div>
     <div id="avviso" class="avviso nascosto"></div>
@@ -453,24 +458,58 @@ if (typeof document !== "undefined") (function () {
     $("cQta").value = fmt(n); $("cErr").textContent = "";
   }
 
+  let torcia = false, zoomSu = false;
+  function spegniExtra() { torcia = false; zoomSu = false; for (const id of ["btnFlash", "btnZoom"]) { $(id).classList.add("nascosto"); $(id).classList.remove("acceso"); } $("btnFlash").textContent = "Flash"; $("btnZoom").textContent = "Zoom"; }
   async function fotocamera() {
     const box = $("camera");
-    if (cam) { const c = cam; cam = null; try { await c.stop(); c.clear(); } catch (e) {} box.classList.add("nascosto"); $("btnCam").textContent = "Fotocamera"; return; }
+    if (cam) { const c = cam; cam = null; spegniExtra(); try { await c.stop(); c.clear(); } catch (e) {} box.classList.add("nascosto"); $("btnCam").textContent = "Fotocamera"; return; }
     if (!window.isSecureContext) { avviso("La fotocamera funziona solo se la pagina è aperta in https", "rosso"); return; }
     box.classList.remove("nascosto"); avviso("");
-    const c = new Html5Qrcode("camera", { verbose: false });
+    // Solo i tipi di codice che servono (lettura più veloce e più sicura) e, dove c'è, il lettore di codici del telefono stesso.
+    const F = window.Html5QrcodeSupportedFormats, conf = { verbose: false, experimentalFeatures: { useBarCodeDetectorIfSupported: true } };
+    if (F) conf.formatsToSupport = [F.CODE_128, F.CODE_39, F.CODE_93, F.EAN_13, F.EAN_8, F.UPC_A, F.UPC_E, F.ITF, F.CODABAR, F.QR_CODE, F.DATA_MATRIX];
+    const riquadro = (w, h) => ({ width: Math.max(60, Math.floor(w * 0.92)), height: Math.max(60, Math.floor(Math.min(h * 0.6, w * 0.5))) });
+    // Alta risoluzione e messa a fuoco continua: i codici piccoli o stampati male si leggono meglio.
+    const fine = { fps: 15, qrbox: riquadro, videoConstraints: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 }, advanced: [{ focusMode: "continuous" }] } };
+    let c = new Html5Qrcode("camera", conf);
     try {
-      await c.start({ facingMode: "environment" },
-        { fps: 10, qrbox: (w, h) => ({ width: Math.max(60, Math.floor(w * 0.9)), height: Math.max(60, Math.floor(Math.min(h * 0.6, w * 0.5))) }) },
-        letto, () => {});
+      try { await c.start({ facingMode: "environment" }, fine, letto, () => {}); }
+      catch (e1) {   // telefono che non accetta quelle richieste: si riparte come prima
+        try { c.clear(); } catch (e) {}
+        c = new Html5Qrcode("camera", conf);
+        await c.start({ facingMode: "environment" }, { fps: 10, qrbox: riquadro }, letto, () => {});
+      }
       cam = c; $("btnCam").textContent = "Spegni";
+      try {
+        const cap = c.getRunningTrackCameraCapabilities();
+        if (cap.torchFeature().isSupported()) $("btnFlash").classList.remove("nascosto");
+        if (cap.zoomFeature().isSupported()) $("btnZoom").classList.remove("nascosto");
+      } catch (e) {}
     } catch (e) {
       box.classList.add("nascosto");
       avviso("Fotocamera non disponibile: " + (e && e.message ? e.message : e), "rosso");
     }
   }
+  async function flash() {
+    if (!cam) return;
+    try { await cam.getRunningTrackCameraCapabilities().torchFeature().apply(!torcia); torcia = !torcia; $("btnFlash").textContent = torcia ? "Flash acceso" : "Flash"; $("btnFlash").classList.toggle("acceso", torcia); }
+    catch (e) { avviso("Il flash non si può comandare da questo telefono", "rosso"); }
+  }
+  async function zoom() {
+    if (!cam) return;
+    try {
+      const z = cam.getRunningTrackCameraCapabilities().zoomFeature(), v = zoomSu ? z.min() : Math.min(z.max(), Math.max(z.min(), 2));
+      await z.apply(v); zoomSu = !zoomSu; $("btnZoom").textContent = zoomSu ? "Zoom 2x" : "Zoom"; $("btnZoom").classList.toggle("acceso", zoomSu);
+    } catch (e) { avviso("Lo zoom non si può comandare da questo telefono", "rosso"); }
+  }
+  const visto = { codice: "", t: 0 };
   function letto(testo) {
     if (!st || attiva || scelta) return;             // popup aperto: non si legge
+    // Un codice vale solo se la fotocamera lo legge DUE volte di fila uguale: così una lettura sbagliata
+    // (una cifra saltata su un codice stampato male) non passa.
+    const k = norm(testo), adesso = Date.now();
+    if (k !== visto.codice || adesso - visto.t > 1500) { visto.codice = k; visto.t = adesso; return; }
+    visto.codice = "";
     if (norm(testo) === ultimo.codice && Date.now() - ultimo.t < 2500) return;
     if (navigator.vibrate) navigator.vibrate(80);
     sparato(testo);
@@ -619,6 +658,8 @@ if (typeof document !== "undefined") (function () {
   $("cMeno").addEventListener("click", () => passo(-1));
   $("cPiu").addEventListener("click", () => passo(1));
   $("btnCam").addEventListener("click", fotocamera);
+  $("btnFlash").addEventListener("click", flash);
+  $("btnZoom").addEventListener("click", zoom);
   if (typeof Html5Qrcode !== "undefined") $("btnCam").classList.remove("nascosto");
   $("cOk").addEventListener("click", conferma);
   $("cNo").addEventListener("click", annulla);
