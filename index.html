@@ -543,6 +543,7 @@ if (typeof document !== "undefined") (function () {
             fotocamera().then(fotocamera); return;
           }
           riprovato = false;
+          setTimeout(() => controllaNero(c), 1300);
           $("camInfo").textContent = "Fotocamera " + (n + 1) + " di " + obiettivi.length + ": " + ((traccia() && traccia().label) || "?") + " · " + (imp.width || "?") + "×" + (imp.height || "?") + (obiettivi.length > 1 ? " — se l'immagine è nera o è quella sbagliata premi «Cambia»" : "");
           $("camInfo").classList.remove("nascosto");
         }).catch(() => {});
@@ -552,6 +553,39 @@ if (typeof document !== "undefined") (function () {
     } catch (e) {
       box.classList.add("nascosto");
       avviso("Fotocamera non disponibile: " + (e && e.message ? e.message : e), "rosso");
+    }
+  }
+  /* Su alcuni telefoni con più obiettivi dietro, quello che parte da solo dà un'immagine tutta nera.
+     Si misura la luce dell'immagine: se è nera si passa da soli all'obiettivo successivo (non a quello davanti), finché se ne trova uno che si vede. */
+  let giriNero = 0, diagnosiMandata = false;
+  function luce() {
+    try {
+      const v = document.querySelector("#camera video"); if (!v || !v.videoWidth) return -1;
+      const k = document.createElement("canvas"); k.width = 32; k.height = 32;
+      const x = k.getContext("2d"); x.drawImage(v, 0, 0, 32, 32);
+      const d = x.getImageData(0, 0, 32, 32).data; let t = 0;
+      for (let i = 0; i < d.length; i += 4) t += d[i] + d[i + 1] + d[i + 2];
+      return Math.round(t / (d.length / 4) / 3 * 10) / 10;
+    } catch (e) { return -1; }
+  }
+  function controllaNero(c) {
+    if (cam !== c) return;
+    const l = luce(), imp = traccia() && traccia().getSettings ? traccia().getSettings() : {};
+    const dietro = obiettivi.filter(x => !/front|user|anterior|selfie|frontale/i.test(x.label || ""));
+    const n = dietro.findIndex(x => x.deviceId === imp.deviceId);
+    const testo = "luce " + l + " | accesa: " + ((traccia() && traccia().label) || "?") + " " + (imp.width || "?") + "x" + (imp.height || "?") + " | tutte: " + obiettivi.map(x => x.label || "?").join(" ; ") + " | " + navigator.userAgent.replace(/^Mozilla\/5\.0 /, "").slice(0, 110);
+    if (foglio && (!diagnosiMandata || (l >= 0 && l < 4))) { diagnosiMandata = true; server("nonInBolla", "DIAGNOSI FOTOCAMERA: " + testo, 0, operatore).catch(() => {}); }
+    if (l >= 0 && l < 4 && dietro.length > 1 && giriNero < dietro.length - 1) {
+      giriNero++;
+      const prossimo = dietro[(n + 1) % dietro.length];
+      camId = prossimo.deviceId; camNome = prossimo.label || "";
+      avviso("Immagine nera: provo un'altra fotocamera (" + (giriNero + 1) + " di " + dietro.length + ")", "giallo");
+      fotocamera().then(fotocamera);
+      return;
+    }
+    if (l >= 4) {     // questa si vede: è quella da ricordare
+      giriNero = 0; camId = imp.deviceId || camId; camNome = (traccia() && traccia().label) || camNome;
+      try { localStorage.setItem("carico-cam", camId || ""); localStorage.setItem("carico-cam-nome", camNome || ""); } catch (e) {}
     }
   }
   function traccia() { const v = document.querySelector("#camera video"); return v && v.srcObject ? v.srcObject.getVideoTracks()[0] : null; }
