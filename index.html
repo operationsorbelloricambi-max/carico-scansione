@@ -338,7 +338,38 @@ if (typeof document !== "undefined") (function () {
   if (remoto && window.crypto && crypto.subtle) {
     const cod = remoto.replace(/^.*\/s\//, "").replace(/\/exec$/, "");
     crypto.subtle.digest("SHA-256", new TextEncoder().encode("etichette:" + cod))
-      .then(b => { canaleVeloce = "cs" + [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, "0")).join("").slice(0, 40); }).catch(() => {});
+      .then(b => { canaleVeloce = "cs" + [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, "0")).join("").slice(0, 40); ascoltaEsiti(); }).catch(() => {});
+  }
+  /* Risposte del robot (es. esito del carico in SirJ dopo «Chiudi fornitore»): arrivano sullo stesso canale istantaneo. */
+  function ascoltaEsiti() {
+    try {
+      const es = new EventSource("https://ntfy.sh/" + canaleVeloce + "r/sse");
+      es.onmessage = ev => {
+        try {
+          const d = JSON.parse(JSON.parse(ev.data).message);
+          if (!d || !d.m) return;
+          avviso(d.m, d.e === "ok" ? "verde" : "rosso"); attesaCarico = null;
+          if (navigator.vibrate) navigator.vibrate(d.e === "ok" ? 150 : [150, 100, 150]);
+          caricaDalFoglio();
+        } catch (e) {}
+      };
+    } catch (e) {}
+  }
+  let attesaCarico = null;
+  /* «Chiudi fornitore» (titolare, 24/11/2026): con un solo tasto il robot carica in SirJ tutte le bolle del fornitore
+     (carico da file con le quantità confermate, scarico dell'ordine a fornitore) e chiude le bolle nell'app. */
+  function chiudiInSirj(forn) {
+    const righe = st.righe.filter(r => r.fornitore === forn);
+    const mancano = righe.filter(r => r.arrivati == null).length, arrivate = righe.filter(r => r.arrivati > 0).length;
+    if (!arrivate) { avviso(forn + ": nessun pezzo confermato, niente da caricare", "giallo"); return; }
+    const ddt = [...new Set(righe.map(r => r.numero))];
+    if (!confirm("Carico in SirJ " + forn + "?\n\n" + ddt.length + (ddt.length === 1 ? " bolla (" : " bolle (") + ddt.join(", ") + "), " + arrivate + " righe con merce arrivata" +
+        (mancano ? "\n\nATTENZIONE: " + mancano + (mancano === 1 ? " riga non è stata sparata" : " righe non sono state sparate") + " e NON entrerà nel carico." : "") +
+        "\n\nIl carico aggiorna la giacenza e scarica l'ordine a fornitore.")) return;
+    fetch("https://ntfy.sh/" + canaleVeloce, { method: "POST", body: JSON.stringify({ c: forn, t: Date.now() }) })
+      .then(r => { if (!r.ok) throw new Error("risposta " + r.status); avviso(forn + ": richiesta di carico mandata a SirJ. Attendi l'esito (circa un minuto)…", "giallo");
+        attesaCarico = setTimeout(() => { if (attesaCarico) avviso(forn + ": nessuna risposta dal robot dopo 4 minuti. Controllare che sia acceso prima di riprovare.", "rosso"); }, 240000); })
+      .catch(e => avviso("Richiesta di carico NON partita (" + (e && e.message ? e.message : e) + "). Riprova.", "rosso"));
   }
   function stampaVeloce(id, n) {
     if (!canaleVeloce || !(n > 0)) return;
@@ -651,7 +682,7 @@ if (typeof document !== "undefined") (function () {
       const rr = st.righe.filter(r => r.fornitore === f), n = new Set(rr.map(r => r.numero)).size;
       const fatte = rr.filter(r => r.arrivati != null).length;
       return { titolo: f, classe: fatte === rr.length ? "ok" : (fatte ? "parz" : ""),
-        sotto: n + " DDT · " + fatte + " di " + rr.length + " righe sparate", azione: () => chiudi(f) };
+        sotto: n + " DDT · " + fatte + " di " + rr.length + " righe sparate" + (canaleVeloce ? " · carica in SirJ" : ""), azione: () => (canaleVeloce ? chiudiInSirj(f) : chiudi(f)) };
     });
     if (st.extra.length) voci.push({ titolo: "Pezzi non in nessuna bolla", classe: "diff", sotto: st.extra.length + " codici", azione: chiudiExtra });
     apriScelta("Chiudi fornitore", "Quale fornitore hai finito?", voci);
@@ -718,7 +749,7 @@ if (typeof document !== "undefined") (function () {
 
   /* Versione della pagina: il telefono può tenere in memoria una copia vecchia anche per 10 minuti. In basso a destra si legge
      quale versione è aperta; se in linea ce n'è una più nuova, la pagina si ricarica da sola (una volta) per prenderla. */
-  const VERSIONE = "24/11 15:15";
+  const VERSIONE = "24/11 16:50";
   if (VERSIONE.indexOf("__") !== 0) {
     $("ver").textContent = "versione " + VERSIONE;
     if (/^https?:$/.test(location.protocol)) fetch("versione.txt?" + Date.now(), { cache: "no-store" }).then(r => r.ok ? r.text() : "").then(t => {
