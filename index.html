@@ -333,9 +333,9 @@ if (typeof document !== "undefined") (function () {
       disegna();
     } catch (e) { avviso("Foglio non raggiungibile: " + (e && e.message ? e.message : e), "rosso"); }
   }
-  function invia(id, modo, q) {
+  function invia(id, modo, q, etichette) {      // etichette: quante stamparne; se non è indicato, una per ogni pezzo nuovo
     if (!foglio) return;
-    server("segna", id, modo, q, operatore).then(res => {
+    server("segna", id, modo, q, operatore, etichette == null ? null : etichette).then(res => {
       const r = st && st.righe.find(x => x.id === res.id);
       if (r) { r.arrivati = res.arrivati; if (!attiva && !scelta) disegna(); }
     }).catch(e => avviso("ATTENZIONE: NON SALVATO NEL FOGLIO (" + (e && e.message ? e.message : e) + "). Riprova.", "rosso"));
@@ -436,13 +436,31 @@ if (typeof document !== "undefined") (function () {
       popup({ ...base, modo: "agg", testa: "In bolla " + n + " · già segnati", grande: fmt(r.arrivati), ok: "OK",
         altro: "Ne ho trovati altri", eti: "Quanti ne hai trovati in più?", valoreOk: 0, scrivi: "1", azzera: true, senzaAnnulla: true });
   }
-  function apriScelta(cod, testa, voci) {
-    scelta = { voci }; if (document.activeElement) document.activeElement.blur();
+  function apriScelta(cod, testa, voci, seAnnulla) {
+    scelta = { voci, seAnnulla }; if (document.activeElement) document.activeElement.blur();
     $("sCod").textContent = cod; $("sTesta").textContent = testa;
     $("sLista").innerHTML = voci.map((x, k) => `<button data-voce="${k}" class="${x.classe || ""}"><b>${k < 9 ? (k + 1) + ". " : ""}${esc(x.titolo)}</b><small>${esc(x.sotto || "")}</small></button>`).join("");
     $("scelta").classList.remove("nascosto");
   }
   function chiudiScelta() { scelta = null; $("scelta").classList.add("nascosto"); }
+  function annullaScelta() { const a = scelta && scelta.seAnnulla; chiudiScelta(); if (a) a(); }
+  /* Regola del titolare (24/11/2026): se i pezzi appena confermati sono più di 10, prima di stampare si chiede
+     se servono tutte le etichette o solo alcune. Fino a 10 partono tutte da sole. */
+  const SOGLIA_ETICHETTE = 10;
+  function chiediEtichette(r, modo, q, nuovi) {
+    const manda = n => { invia(r.id, modo, q, n); avviso(r.codice + ": segnati " + fmt(r.arrivati) + " · " + (n ? n + (n === 1 ? " etichetta" : " etichette") + " in stampa" : "nessuna etichetta"), n ? "verde" : "giallo"); };
+    apriScelta(r.codice, "Hai confermato " + fmt(nuovi) + " pezzi: vuoi stampare tutte le " + fmt(nuovi) + " etichette?", [
+      { titolo: "Sì, tutte: " + fmt(nuovi) + " etichette", classe: "ok", azione: () => manda(nuovi) },
+      { titolo: "Scelgo io quante", sotto: "scrivi il numero di etichette", azione: () => {
+          const t = prompt("Quante etichette stampo? (da 0 a " + fmt(nuovi) + ")", "1");
+          const n = t === null ? NaN : parseInt(String(t).trim(), 10);
+          if (isNaN(n) || n < 0 || n > nuovi) { chiediEtichette(r, modo, q, nuovi); return; }
+          manda(n);
+        } },
+      { titolo: "Solo 1 etichetta", azione: () => manda(1) },
+      { titolo: "Nessuna etichetta", sotto: "segna solo i pezzi arrivati", azione: () => manda(0) }
+    ], () => manda(0));     // «Annulla» qui vuol dire: pezzi segnati, nessuna etichetta
+  }
   function scegli(k) {
     const v = scelta && scelta.voci[k]; if (!v) return;
     chiudiScelta(); v.azione();
@@ -581,11 +599,14 @@ if (typeof document !== "undefined") (function () {
       $("cErr").textContent = "Quantità non valida: " + grezzo;
       modifica(""); return;
     }
+    let dopo = null;
     if (attiva.tipo === "riga") {
       const r = st.righe[attiva.i];
-      const tot = attiva.modo === "agg" ? (r.arrivati || 0) + q : q;
+      const prima = r.arrivati || 0, modo = attiva.modo;
+      const tot = modo === "agg" ? prima + q : q;
       r.arrivati = tot;
-      invia(r.id, attiva.modo, q);
+      if (foglio && tot - prima > SOGLIA_ETICHETTE) dopo = () => chiediEtichette(r, modo, q, tot - prima);
+      else invia(r.id, modo, q);
       if (tot === r.qta) avviso(r.codice + " completo: " + fmt(tot) + " di " + fmt(r.qta), "verde");
       else if (tot < r.qta) avviso(r.codice + ": segnati " + fmt(tot) + " di " + fmt(r.qta) + ", mancano " + fmt(r.qta - tot), "giallo");
       else avviso(r.codice + ": in bolla " + fmt(r.qta) + ", arrivati " + fmt(tot) + " (+" + fmt(tot - r.qta) + ")", "rosso");
@@ -595,6 +616,7 @@ if (typeof document !== "undefined") (function () {
         .catch(e => avviso("ATTENZIONE: NON SALVATO NEL FOGLIO (" + (e && e.message ? e.message : e) + ")", "rosso"));
     }
     salva(); chiudiQta();
+    if (dopo) dopo();
   }
   function annulla() {
     if (attiva && attiva.tipo === "extra" && !st.extra[attiva.i].arrivati) st.extra.splice(attiva.i, 1);
@@ -671,7 +693,7 @@ if (typeof document !== "undefined") (function () {
   $("sparo").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); e.stopPropagation(); const c = e.target.value; e.target.value = ""; sparato(c); } });
   document.addEventListener("keydown", e => {
     if (scelta) {
-      if (e.key === "Escape") { e.preventDefault(); chiudiScelta(); avviso(""); if (tastiera) $("sparo").focus(); }
+      if (e.key === "Escape") { e.preventDefault(); avviso(""); annullaScelta(); if (tastiera) $("sparo").focus(); }
       else if (/^[1-9]$/.test(e.key)) { e.preventDefault(); scegli(+e.key - 1); }
       return;
     }
@@ -703,7 +725,7 @@ if (typeof document !== "undefined") (function () {
   $("cNo").addEventListener("click", annulla);
   $("btnChiudi").addEventListener("click", () => { if (!attiva && !scelta) chiudiFornitore(); });
   $("sLista").addEventListener("click", e => { const b = e.target.closest("button[data-voce]"); if (b) scegli(+b.dataset.voce); });
-  $("sNo").addEventListener("click", () => { chiudiScelta(); avviso(""); if (tastiera) $("sparo").focus(); });
+  $("sNo").addEventListener("click", () => { avviso(""); annullaScelta(); if (tastiera) $("sparo").focus(); });
   $("btnNuovo").addEventListener("click", () => {
     if (!confirm("Togliere TUTTE le bolle caricate? Quello che non hai scaricato si perde.")) return;
     if (cam) fotocamera();
