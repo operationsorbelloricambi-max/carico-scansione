@@ -470,36 +470,48 @@ if (typeof document !== "undefined") (function () {
     if (F) conf.formatsToSupport = [F.CODE_128, F.CODE_39, F.CODE_93, F.EAN_13, F.EAN_8, F.UPC_A, F.UPC_E, F.ITF, F.CODABAR, F.QR_CODE, F.DATA_MATRIX];
     const riquadro = (w, h) => ({ width: Math.max(60, Math.floor(w * 0.92)), height: Math.max(60, Math.floor(Math.min(h * 0.6, w * 0.5))) });
     // Alta risoluzione e messa a fuoco continua: i codici piccoli o stampati male si leggono meglio.
-    const fine = { fps: 15, qrbox: riquadro, videoConstraints: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 }, advanced: [{ focusMode: "continuous" }] } };
+    // Sempre la fotocamera ESTERNA (posteriore). Tra le posteriori si preferisce quella principale («0»), che è quella con il flash.
+    let scelta = null;
+    try {
+      const tutte = await Html5Qrcode.getCameras();
+      const dietro = tutte.filter(x => /back|rear|poster|environment|retro|traseira/i.test(x.label || ""));
+      scelta = dietro.find(x => /(^|\D)0(\D|$)/.test(x.label)) || dietro.find(x => !/wide|ultra|tele|macro|grandang/i.test(x.label)) || dietro[0] || null;
+    } catch (e) {}
+    const quale = scelta ? { deviceId: { exact: scelta.id } } : { facingMode: { exact: "environment" } };
+    // Alta risoluzione e messa a fuoco continua: i codici piccoli o stampati male si leggono meglio.
+    const fine = { fps: 15, qrbox: riquadro, videoConstraints: Object.assign({ width: { ideal: 1920 }, height: { ideal: 1080 }, advanced: [{ focusMode: "continuous" }] }, quale) };
     let c = new Html5Qrcode("camera", conf);
     try {
-      try { await c.start({ facingMode: "environment" }, fine, letto, () => {}); }
-      catch (e1) {   // telefono che non accetta quelle richieste: si riparte come prima
+      try { await c.start(quale, fine, letto, () => {}); }
+      catch (e1) {   // telefono che non accetta quelle richieste: si riparte come prima (sempre fotocamera esterna)
         try { c.clear(); } catch (e) {}
         c = new Html5Qrcode("camera", conf);
         await c.start({ facingMode: "environment" }, { fps: 10, qrbox: riquadro }, letto, () => {});
       }
       cam = c; $("btnCam").textContent = "Spegni";
-      try {
-        const cap = c.getRunningTrackCameraCapabilities();
-        if (cap.torchFeature().isSupported()) $("btnFlash").classList.remove("nascosto");
-        if (cap.zoomFeature().isSupported()) $("btnZoom").classList.remove("nascosto");
-      } catch (e) {}
+      setTimeout(() => {      // le possibilità della fotocamera (flash, zoom) si conoscono un attimo dopo l'accensione
+        if (cam !== c) return;
+        const cap = traccia() && traccia().getCapabilities ? traccia().getCapabilities() : {};
+        if ("torch" in cap) $("btnFlash").classList.remove("nascosto");
+        if (cap.zoom && cap.zoom.max > cap.zoom.min) $("btnZoom").classList.remove("nascosto");
+      }, 700);
     } catch (e) {
       box.classList.add("nascosto");
       avviso("Fotocamera non disponibile: " + (e && e.message ? e.message : e), "rosso");
     }
   }
+  function traccia() { const v = document.querySelector("#camera video"); return v && v.srcObject ? v.srcObject.getVideoTracks()[0] : null; }
   async function flash() {
-    if (!cam) return;
-    try { await cam.getRunningTrackCameraCapabilities().torchFeature().apply(!torcia); torcia = !torcia; $("btnFlash").textContent = torcia ? "Flash acceso" : "Flash"; $("btnFlash").classList.toggle("acceso", torcia); }
+    if (!cam || !traccia()) return;
+    try { await traccia().applyConstraints({ advanced: [{ torch: !torcia }] }); torcia = !torcia; $("btnFlash").textContent = torcia ? "Flash acceso" : "Flash"; $("btnFlash").classList.toggle("acceso", torcia); }
     catch (e) { avviso("Il flash non si può comandare da questo telefono", "rosso"); }
   }
   async function zoom() {
-    if (!cam) return;
+    if (!cam || !traccia()) return;
     try {
-      const z = cam.getRunningTrackCameraCapabilities().zoomFeature(), v = zoomSu ? z.min() : Math.min(z.max(), Math.max(z.min(), 2));
-      await z.apply(v); zoomSu = !zoomSu; $("btnZoom").textContent = zoomSu ? "Zoom 2x" : "Zoom"; $("btnZoom").classList.toggle("acceso", zoomSu);
+      const z = traccia().getCapabilities().zoom, v = zoomSu ? z.min : Math.min(z.max, Math.max(z.min, 2));
+      const vinc = [{ zoom: v }]; if (torcia) vinc[0].torch = true;
+      await traccia().applyConstraints({ advanced: vinc }); zoomSu = !zoomSu; $("btnZoom").textContent = zoomSu ? "Zoom 2x" : "Zoom"; $("btnZoom").classList.toggle("acceso", zoomSu);
     } catch (e) { avviso("Lo zoom non si può comandare da questo telefono", "rosso"); }
   }
   const visto = { codice: "", t: 0 };
