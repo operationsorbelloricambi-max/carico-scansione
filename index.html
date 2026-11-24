@@ -480,13 +480,15 @@ if (typeof document !== "undefined") (function () {
   }
 
   let torcia = false, zoomSu = false, altaRis = false, obiettivi = [], camId = null;
-  try { camId = localStorage.getItem("carico-cam") || null; } catch (e) {}
+  let camNome = "", riprovato = false;
+  try { camId = localStorage.getItem("carico-cam") || null; camNome = localStorage.getItem("carico-cam-nome") || ""; } catch (e) {}
   async function cambia() {     // passa all'obiettivo successivo del telefono e lo ricorda
     if (!cam || obiettivi.length < 2) return;
     const ora = traccia() && traccia().getSettings ? traccia().getSettings().deviceId : null;
     const n = obiettivi.findIndex(x => x.deviceId === ora);
-    camId = obiettivi[(n + 1) % obiettivi.length].deviceId;
-    try { localStorage.setItem("carico-cam", camId); } catch (e) {}
+    const prossimo = obiettivi[(n + 1) % obiettivi.length];
+    camId = prossimo.deviceId; camNome = prossimo.label || "";
+    try { localStorage.setItem("carico-cam", camId); localStorage.setItem("carico-cam-nome", camNome); } catch (e) {}
     await fotocamera(); await fotocamera();
   }
   function spegniExtra() { torcia = false; zoomSu = false; $("btnHD").classList.add("nascosto"); $("btnCambia").classList.add("nascosto"); $("camInfo").classList.add("nascosto"); for (const id of ["btnFlash", "btnZoom"]) { $(id).classList.add("nascosto"); $(id).classList.remove("acceso"); } $("btnFlash").textContent = "Flash"; $("btnZoom").textContent = "Zoom"; }
@@ -503,6 +505,12 @@ if (typeof document !== "undefined") (function () {
     // Accensione come nella prima versione, che sui telefoni provati funzionava: fotocamera posteriore, senza altre richieste.
     // L'alta risoluzione (pulsante «HD») è facoltativa: su alcuni telefoni l'immagine diventava nera.
     // Se l'operaio ha scelto a mano un obiettivo con «Cambia», si usa quello (resta ricordato sul telefono).
+    if (camNome) {   // l'obiettivo scelto si ritrova per nome: il suo codice interno può cambiare quando si ricarica la pagina
+      try {
+        const trovato = (await navigator.mediaDevices.enumerateDevices()).find(x => x.kind === "videoinput" && x.label === camNome);
+        if (trovato) camId = trovato.deviceId;
+      } catch (e) {}
+    }
     const quale = camId ? { deviceId: { exact: camId } } : { facingMode: "environment" };
     const opzioni = { fps: 10, qrbox: riquadro };
     if (altaRis) opzioni.videoConstraints = Object.assign({ width: { ideal: 1920 }, height: { ideal: 1080 } }, camId ? { deviceId: { exact: camId } } : { facingMode: { exact: "environment" } });
@@ -512,7 +520,8 @@ if (typeof document !== "undefined") (function () {
       catch (e1) {
         if (!altaRis && !camId) throw e1;
         altaRis = false; $("btnHD").classList.remove("acceso");
-        camId = null; try { localStorage.removeItem("carico-cam"); } catch (e) {}
+        const perso = camNome; camId = null;
+        try { localStorage.removeItem("carico-cam"); } catch (e) {}
         try { c.clear(); } catch (e) {}
         c = new Html5Qrcode("camera", conf);
         await c.start({ facingMode: "environment" }, { fps: 10, qrbox: riquadro }, letto, () => {});
@@ -527,6 +536,13 @@ if (typeof document !== "undefined") (function () {
           obiettivi = d.filter(x => x.kind === "videoinput");
           if (obiettivi.length > 1) $("btnCambia").classList.remove("nascosto");
           const n = obiettivi.findIndex(x => x.deviceId === imp.deviceId);
+          const voluto = camNome && obiettivi.find(x => x.label === camNome);
+          if (voluto && voluto.deviceId !== imp.deviceId && !riprovato) {
+            riprovato = true; camId = voluto.deviceId;
+            try { localStorage.setItem("carico-cam", camId); } catch (e) {}
+            fotocamera().then(fotocamera); return;
+          }
+          riprovato = false;
           $("camInfo").textContent = "Fotocamera " + (n + 1) + " di " + obiettivi.length + ": " + ((traccia() && traccia().label) || "?") + " · " + (imp.width || "?") + "×" + (imp.height || "?") + (obiettivi.length > 1 ? " — se l'immagine è nera o è quella sbagliata premi «Cambia»" : "");
           $("camInfo").classList.remove("nascosto");
         }).catch(() => {});
