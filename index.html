@@ -162,6 +162,7 @@
     <button id="cAzz" class="nascosto">Azzera questa riga</button>
   </div>
 </div>
+<div id="ver" style="position:fixed;right:6px;bottom:4px;font-size:11px;color:#718096;background:#fff;padding:1px 5px;border-radius:4px;z-index:3"></div>
 <div id="scelta" class="velo nascosto">
   <div class="popup">
     <div class="cod" id="sCod"></div>
@@ -701,6 +702,16 @@ if (typeof document !== "undefined") (function () {
     else if (b.dataset.togli != null) { st.extra.splice(+b.dataset.togli, 1); salva(); chiudiQta(); }
   });
 
+  /* Versione della pagina: il telefono può tenere in memoria una copia vecchia anche per 10 minuti. In basso a destra si legge
+     quale versione è aperta; se in linea ce n'è una più nuova, la pagina si ricarica da sola (una volta) per prenderla. */
+  const VERSIONE = "24/11 12:56";
+  if (VERSIONE.indexOf("__") !== 0) {
+    $("ver").textContent = "versione " + VERSIONE;
+    if (/^https?:$/.test(location.protocol)) fetch("versione.txt?" + Date.now(), { cache: "no-store" }).then(r => r.ok ? r.text() : "").then(t => {
+      t = t.trim();
+      if (t && t !== VERSIONE && new URLSearchParams(location.search).get("v") !== t) location.replace(location.pathname + "?v=" + encodeURIComponent(t) + location.hash);
+    }).catch(() => {});
+  }
   if (foglio) {
     while (!operatore) operatore = (prompt("Come ti chiami? (resta salvato su questo dispositivo)") || "").trim().toUpperCase();
     try { localStorage.setItem("carico-operatore", operatore); } catch (e) {}
