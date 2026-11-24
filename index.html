@@ -456,9 +456,9 @@ if (typeof document !== "undefined") (function () {
   }
   function chiudiScelta() { scelta = null; $("scelta").classList.add("nascosto"); }
   function annullaScelta() { const a = scelta && scelta.seAnnulla; chiudiScelta(); if (a) a(); }
-  /* Regola del titolare (24/11/2026): se i pezzi appena confermati sono più di 10, prima di stampare si chiede
-     se servono tutte le etichette o solo alcune. Fino a 10 partono tutte da sole. */
-  const SOGLIA_ETICHETTE = 10;
+  /* Regola del titolare (24/11/2026, corretta alle 14:55): se i pezzi appena confermati sono 3 o più, prima di stampare
+     si chiede se servono tutte le etichette o solo alcune. Con 1 o 2 pezzi partono da sole. (La prima regola era «più di 10».) */
+  const SOGLIA_ETICHETTE = 2;      // si chiede quando i pezzi nuovi sono PIÙ di questo numero
   function chiediEtichette(r, modo, q, nuovi) {
     const manda = n => { invia(r.id, modo, q, n); avviso(r.codice + ": segnati " + fmt(r.arrivati) + " · " + (n ? n + (n === 1 ? " etichetta" : " etichette") + " in stampa" : "nessuna etichetta"), n ? "verde" : "giallo"); };
     apriScelta(r.codice, "Hai confermato " + fmt(nuovi) + " pezzi: vuoi stampare tutte le " + fmt(nuovi) + " etichette?", [
@@ -718,7 +718,7 @@ if (typeof document !== "undefined") (function () {
 
   /* Versione della pagina: il telefono può tenere in memoria una copia vecchia anche per 10 minuti. In basso a destra si legge
      quale versione è aperta; se in linea ce n'è una più nuova, la pagina si ricarica da sola (una volta) per prenderla. */
-  const VERSIONE = "24/11 14:48";
+  const VERSIONE = "24/11 15:15";
   if (VERSIONE.indexOf("__") !== 0) {
     $("ver").textContent = "versione " + VERSIONE;
     if (/^https?:$/.test(location.protocol)) fetch("versione.txt?" + Date.now(), { cache: "no-store" }).then(r => r.ok ? r.text() : "").then(t => {
