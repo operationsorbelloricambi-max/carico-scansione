@@ -331,8 +331,22 @@ if (typeof document !== "undefined") (function () {
       disegna();
     } catch (e) { avviso("Foglio non raggiungibile: " + (e && e.message ? e.message : e), "rosso"); }
   }
-  function invia(id, modo, q, etichette) {      // etichette: quante stamparne; se non è indicato, una per ogni pezzo nuovo
+  /* CANALE VELOCE per le etichette (titolare, 24/11/2026: l'etichetta deve uscire subito). Il foglio Google impiega ~3 secondi
+     a ogni chiamata: l'ordine di stampa parte quindi anche come messaggio istantaneo (servizio ntfy.sh) verso il robot.
+     Nel messaggio ci sono solo la sigla della riga e il numero di etichette; il nome del canale si ricava dal codice del link. */
+  let canaleVeloce = null;
+  if (remoto && window.crypto && crypto.subtle) {
+    const cod = remoto.replace(/^.*\/s\//, "").replace(/\/exec$/, "");
+    crypto.subtle.digest("SHA-256", new TextEncoder().encode("etichette:" + cod))
+      .then(b => { canaleVeloce = "cs" + [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, "0")).join("").slice(0, 40); }).catch(() => {});
+  }
+  function stampaVeloce(id, n) {
+    if (!canaleVeloce || !(n > 0)) return;
+    fetch("https://ntfy.sh/" + canaleVeloce, { method: "POST", body: JSON.stringify({ r: id, n: n, t: Date.now() }), keepalive: true }).catch(() => {});
+  }
+  function invia(id, modo, q, etichette, nuovi) {      // etichette: quante stamparne; se non è indicato, una per ogni pezzo nuovo
     if (!foglio) return;
+    stampaVeloce(id, etichette == null ? nuovi : etichette);
     server("segna", id, modo, q, operatore, etichette == null ? null : etichette).then(res => {
       const r = st && st.righe.find(x => x.id === res.id);
       if (r) { r.arrivati = res.arrivati; if (!attiva && !scelta) disegna(); }
@@ -571,7 +585,7 @@ if (typeof document !== "undefined") (function () {
       const tot = modo === "agg" ? prima + q : q;
       r.arrivati = tot;
       if (foglio && tot - prima > SOGLIA_ETICHETTE) dopo = () => chiediEtichette(r, modo, q, tot - prima);
-      else invia(r.id, modo, q);
+      else invia(r.id, modo, q, null, tot - prima);
       if (tot === r.qta) avviso(r.codice + " completo: " + fmt(tot) + " di " + fmt(r.qta), "verde");
       else if (tot < r.qta) avviso(r.codice + ": segnati " + fmt(tot) + " di " + fmt(r.qta) + ", mancano " + fmt(r.qta - tot), "giallo");
       else avviso(r.codice + ": in bolla " + fmt(r.qta) + ", arrivati " + fmt(tot) + " (+" + fmt(tot - r.qta) + ")", "rosso");
@@ -704,7 +718,7 @@ if (typeof document !== "undefined") (function () {
 
   /* Versione della pagina: il telefono può tenere in memoria una copia vecchia anche per 10 minuti. In basso a destra si legge
      quale versione è aperta; se in linea ce n'è una più nuova, la pagina si ricarica da sola (una volta) per prenderla. */
-  const VERSIONE = "24/11 12:56";
+  const VERSIONE = "24/11 14:48";
   if (VERSIONE.indexOf("__") !== 0) {
     $("ver").textContent = "versione " + VERSIONE;
     if (/^https?:$/.test(location.protocol)) fetch("versione.txt?" + Date.now(), { cache: "no-store" }).then(r => r.ok ? r.text() : "").then(t => {
