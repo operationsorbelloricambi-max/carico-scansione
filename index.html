@@ -245,7 +245,13 @@ function statoRiga(r) { return r.arrivati == null ? "attesa" : (r.arrivati === r
 function trovaRighe(righe, sparato) {
   const k = norm(sparato);
   if (!k) return [];
-  const uguali = righe.map((r, i) => (norm(r.codice) === k || (r.barcode && norm(r.barcode) === k)) ? i : -1).filter(i => i >= 0);
+  let uguali = righe.map((r, i) => (norm(r.codice) === k || (r.barcode && norm(r.barcode) === k)) ? i : -1).filter(i => i >= 0);
+  if (!uguali.length) {
+    // Nessun codice identico: il codice a barre del pezzo spesso ha qualcosa in più del codice di bolla
+    // (zeri davanti, una lettera o un precodice all'inizio, altri dati in coda) oppure ne è stata letta solo una parte.
+    const simile = c => { c = norm(c); return c.length >= 5 && (k.endsWith(c) || k.startsWith(c) || (k.length >= 6 && (c.endsWith(k) || c.startsWith(k)))); };
+    uguali = righe.map((r, i) => (simile(r.codice) || (r.barcode && simile(r.barcode))) ? i : -1).filter(i => i >= 0);
+  }
   const fatto = i => { const s = statoRiga(righe[i]); return s === "ok" || s === "diff" ? 1 : 0; };
   return uguali.sort((a, b) => fatto(a) - fatto(b) || a - b);
 }
