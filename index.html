@@ -118,11 +118,8 @@
       <button id="btnCam" class="nascosto">Fotocamera</button>
       <button id="btnFlash" class="nascosto">Flash</button>
       <button id="btnZoom" class="nascosto">Zoom</button>
-      <button id="btnHD" class="nascosto">HD</button>
-      <button id="btnCambia" class="nascosto">Cambia</button>
     </div>
     <div id="camera" class="nascosto"></div>
-    <p id="camInfo" class="nota nascosto"></p>
     <div id="avviso" class="avviso nascosto"></div>
     <div class="conti">
       <span class="v">Verdi <b id="nV">0</b></span>
@@ -479,113 +476,30 @@ if (typeof document !== "undefined") (function () {
     $("cQta").value = fmt(n); $("cErr").textContent = "";
   }
 
-  let torcia = false, zoomSu = false, altaRis = false, obiettivi = [], camId = null;
-  let camNome = "", riprovato = false;
-  try { camId = localStorage.getItem("carico-cam") || null; camNome = localStorage.getItem("carico-cam-nome") || ""; } catch (e) {}
-  async function cambia() {     // passa all'obiettivo successivo del telefono e lo ricorda
-    if (!cam || obiettivi.length < 2) return;
-    const ora = traccia() && traccia().getSettings ? traccia().getSettings().deviceId : null;
-    const n = obiettivi.findIndex(x => x.deviceId === ora);
-    const prossimo = obiettivi[(n + 1) % obiettivi.length];
-    camId = prossimo.deviceId; camNome = prossimo.label || "";
-    try { localStorage.setItem("carico-cam", camId); localStorage.setItem("carico-cam-nome", camNome); } catch (e) {}
-    await fotocamera(); await fotocamera();
-  }
-  function spegniExtra() { torcia = false; zoomSu = false; $("btnHD").classList.add("nascosto"); $("btnCambia").classList.add("nascosto"); $("camInfo").classList.add("nascosto"); for (const id of ["btnFlash", "btnZoom"]) { $(id).classList.add("nascosto"); $(id).classList.remove("acceso"); } $("btnFlash").textContent = "Flash"; $("btnZoom").textContent = "Zoom"; }
+  /* FOTOCAMERA — regola imparata il 24/11/2026 sul telefono del titolare: l'accensione deve restare quella semplice della
+     prima versione (fotocamera posteriore, nessuna richiesta di risoluzione, nessuna scelta dell'obiettivo) e la fotocamera
+     NON va mai riaccesa da sola: ogni riaccensione (cambio obiettivo, alta risoluzione, controlli automatici) dava immagine nera.
+     Flash e zoom si comandano sulla fotocamera già accesa, senza riaccenderla, e solo quando l'operaio preme il pulsante. */
+  let torcia = false, zoomSu = false, spenta = 0;
+  try { localStorage.removeItem("carico-cam"); localStorage.removeItem("carico-cam-nome"); } catch (e) {}
+  function spegniExtra() { torcia = false; zoomSu = false; for (const id of ["btnFlash", "btnZoom"]) { $(id).classList.add("nascosto"); $(id).classList.remove("acceso"); } $("btnFlash").textContent = "Flash"; $("btnZoom").textContent = "Zoom"; }
   async function fotocamera() {
     const box = $("camera");
-    if (cam) { const c = cam; cam = null; spegniExtra(); try { await c.stop(); c.clear(); } catch (e) {} box.classList.add("nascosto"); $("btnCam").textContent = "Fotocamera"; return; }
+    if (cam) { const c = cam; cam = null; spegniExtra(); try { await c.stop(); c.clear(); } catch (e) {} spenta = Date.now(); box.classList.add("nascosto"); $("btnCam").textContent = "Fotocamera"; return; }
     if (!window.isSecureContext) { avviso("La fotocamera funziona solo se la pagina è aperta in https", "rosso"); return; }
+    const attesa = 1500 - (Date.now() - spenta);     // appena spenta: si lascia al telefono il tempo di liberarla
+    if (attesa > 0) { $("btnCam").disabled = true; await new Promise(r => setTimeout(r, attesa)); $("btnCam").disabled = false; }
     box.classList.remove("nascosto"); avviso("");
-    // Solo i tipi di codice che servono (lettura più veloce e più sicura) e, dove c'è, il lettore di codici del telefono stesso.
-    const F = window.Html5QrcodeSupportedFormats, conf = { verbose: false, experimentalFeatures: { useBarCodeDetectorIfSupported: true } };
-    if (F) conf.formatsToSupport = [F.CODE_128, F.CODE_39, F.CODE_93, F.EAN_13, F.EAN_8, F.UPC_A, F.UPC_E, F.ITF, F.CODABAR, F.QR_CODE, F.DATA_MATRIX];
-    const riquadro = (w, h) => ({ width: Math.max(60, Math.floor(w * 0.92)), height: Math.max(60, Math.floor(Math.min(h * 0.6, w * 0.5))) });
-    // Alta risoluzione e messa a fuoco continua: i codici piccoli o stampati male si leggono meglio.
-    // Accensione come nella prima versione, che sui telefoni provati funzionava: fotocamera posteriore, senza altre richieste.
-    // L'alta risoluzione (pulsante «HD») è facoltativa: su alcuni telefoni l'immagine diventava nera.
-    // Se l'operaio ha scelto a mano un obiettivo con «Cambia», si usa quello (resta ricordato sul telefono).
-    if (camNome) {   // l'obiettivo scelto si ritrova per nome: il suo codice interno può cambiare quando si ricarica la pagina
-      try {
-        const trovato = (await navigator.mediaDevices.enumerateDevices()).find(x => x.kind === "videoinput" && x.label === camNome);
-        if (trovato) camId = trovato.deviceId;
-      } catch (e) {}
-    }
-    const quale = camId ? { deviceId: { exact: camId } } : { facingMode: "environment" };
-    const opzioni = { fps: 10, qrbox: riquadro };
-    if (altaRis) opzioni.videoConstraints = Object.assign({ width: { ideal: 1920 }, height: { ideal: 1080 } }, camId ? { deviceId: { exact: camId } } : { facingMode: { exact: "environment" } });
-    let c = new Html5Qrcode("camera", conf);
+    const c = new Html5Qrcode("camera", { verbose: false });
     try {
-      try { await c.start(quale, opzioni, letto, () => {}); }
-      catch (e1) {
-        if (!altaRis && !camId) throw e1;
-        altaRis = false; $("btnHD").classList.remove("acceso");
-        const perso = camNome; camId = null;
-        try { localStorage.removeItem("carico-cam"); } catch (e) {}
-        try { c.clear(); } catch (e) {}
-        c = new Html5Qrcode("camera", conf);
-        await c.start({ facingMode: "environment" }, { fps: 10, qrbox: riquadro }, letto, () => {});
-      }
+      await c.start({ facingMode: "environment" },
+        { fps: 10, qrbox: (w, h) => ({ width: Math.max(60, Math.floor(w * 0.9)), height: Math.max(60, Math.floor(Math.min(h * 0.6, w * 0.5))) }) },
+        letto, () => {});
       cam = c; $("btnCam").textContent = "Spegni";
-      setTimeout(() => {      // le possibilità della fotocamera (flash, zoom) si conoscono un attimo dopo l'accensione
-        if (cam !== c) return;
-        const cap = traccia() && traccia().getCapabilities ? traccia().getCapabilities() : {};
-        $("btnHD").classList.remove("nascosto");
-        const imp = traccia() && traccia().getSettings ? traccia().getSettings() : {};
-        navigator.mediaDevices.enumerateDevices().then(d => {
-          obiettivi = d.filter(x => x.kind === "videoinput");
-          if (obiettivi.length > 1) $("btnCambia").classList.remove("nascosto");
-          const n = obiettivi.findIndex(x => x.deviceId === imp.deviceId);
-          const voluto = camNome && obiettivi.find(x => x.label === camNome);
-          if (voluto && voluto.deviceId !== imp.deviceId && !riprovato) {
-            riprovato = true; camId = voluto.deviceId;
-            try { localStorage.setItem("carico-cam", camId); } catch (e) {}
-            fotocamera().then(fotocamera); return;
-          }
-          riprovato = false;
-          setTimeout(() => controllaNero(c), 1300);
-          $("camInfo").textContent = "Fotocamera " + (n + 1) + " di " + obiettivi.length + ": " + ((traccia() && traccia().label) || "?") + " · " + (imp.width || "?") + "×" + (imp.height || "?") + (obiettivi.length > 1 ? " — se l'immagine è nera o è quella sbagliata premi «Cambia»" : "");
-          $("camInfo").classList.remove("nascosto");
-        }).catch(() => {});
-        if ("torch" in cap) $("btnFlash").classList.remove("nascosto");
-        if (cap.zoom && cap.zoom.max > cap.zoom.min) $("btnZoom").classList.remove("nascosto");
-      }, 700);
+      $("btnFlash").classList.remove("nascosto"); $("btnZoom").classList.remove("nascosto");
     } catch (e) {
       box.classList.add("nascosto");
       avviso("Fotocamera non disponibile: " + (e && e.message ? e.message : e), "rosso");
-    }
-  }
-  /* Su alcuni telefoni con più obiettivi dietro, quello che parte da solo dà un'immagine tutta nera.
-     Si misura la luce dell'immagine: se è nera si passa da soli all'obiettivo successivo (non a quello davanti), finché se ne trova uno che si vede. */
-  let giriNero = 0, diagnosiMandata = false;
-  function luce() {
-    try {
-      const v = document.querySelector("#camera video"); if (!v || !v.videoWidth) return -1;
-      const k = document.createElement("canvas"); k.width = 32; k.height = 32;
-      const x = k.getContext("2d"); x.drawImage(v, 0, 0, 32, 32);
-      const d = x.getImageData(0, 0, 32, 32).data; let t = 0;
-      for (let i = 0; i < d.length; i += 4) t += d[i] + d[i + 1] + d[i + 2];
-      return Math.round(t / (d.length / 4) / 3 * 10) / 10;
-    } catch (e) { return -1; }
-  }
-  function controllaNero(c) {
-    if (cam !== c) return;
-    const l = luce(), imp = traccia() && traccia().getSettings ? traccia().getSettings() : {};
-    const dietro = obiettivi.filter(x => !/front|user|anterior|selfie|frontale/i.test(x.label || ""));
-    const n = dietro.findIndex(x => x.deviceId === imp.deviceId);
-    const testo = "luce " + l + " | accesa: " + ((traccia() && traccia().label) || "?") + " " + (imp.width || "?") + "x" + (imp.height || "?") + " | tutte: " + obiettivi.map(x => x.label || "?").join(" ; ") + " | " + navigator.userAgent.replace(/^Mozilla\/5\.0 /, "").slice(0, 110);
-    if (foglio && (!diagnosiMandata || (l >= 0 && l < 4))) { diagnosiMandata = true; server("nonInBolla", "DIAGNOSI FOTOCAMERA: " + testo, 0, operatore).catch(() => {}); }
-    if (l >= 0 && l < 4 && dietro.length > 1 && giriNero < dietro.length - 1) {
-      giriNero++;
-      const prossimo = dietro[(n + 1) % dietro.length];
-      camId = prossimo.deviceId; camNome = prossimo.label || "";
-      avviso("Immagine nera: provo un'altra fotocamera (" + (giriNero + 1) + " di " + dietro.length + ")", "giallo");
-      fotocamera().then(fotocamera);
-      return;
-    }
-    if (l >= 4) {     // questa si vede: è quella da ricordare
-      giriNero = 0; camId = imp.deviceId || camId; camNome = (traccia() && traccia().label) || camNome;
-      try { localStorage.setItem("carico-cam", camId || ""); localStorage.setItem("carico-cam-nome", camNome || ""); } catch (e) {}
     }
   }
   function traccia() { const v = document.querySelector("#camera video"); return v && v.srcObject ? v.srcObject.getVideoTracks()[0] : null; }
@@ -764,12 +678,6 @@ if (typeof document !== "undefined") (function () {
   $("btnCam").addEventListener("click", fotocamera);
   $("btnFlash").addEventListener("click", flash);
   $("btnZoom").addEventListener("click", zoom);
-  $("btnCambia").addEventListener("click", cambia);
-  $("btnHD").addEventListener("click", async () => {   // riaccende la fotocamera con o senza alta risoluzione
-    if (!cam) return;
-    altaRis = !altaRis; $("btnHD").classList.toggle("acceso", altaRis);
-    await fotocamera(); await fotocamera();
-  });
   if (typeof Html5Qrcode !== "undefined") $("btnCam").classList.remove("nascosto");
   $("cOk").addEventListener("click", conferma);
   $("cNo").addEventListener("click", annulla);
