@@ -453,8 +453,8 @@ if (typeof document !== "undefined") (function () {
     if (!arrivate) { avviso(nome + ": nessun pezzo confermato, niente da caricare", "giallo"); return; }
     const sospese = righe.filter(r => r.arrivati > 0 && daAbbinare(r));
     if (sospese.length) { avviso(nome + " NON si può caricare: " + sospese.length + (sospese.length === 1 ? " riga ha" : " righe hanno") + " la marca ancora DA ABBINARE (" + sospese.slice(0, 4).map(r => r.codice).join(", ") + "). Il robot le sta cercando in SirJ: ricarica la pagina tra un minuto; se restano, avvisa Davide.", "rosso"); if (navigator.vibrate) navigator.vibrate([200, 100, 200]); return; }
-    const ddt = [...new Set(righe.map(r => r.numero))];
-    if (!confirm("Carico in SirJ " + nome + "?\n\n" + ddt.length + (ddt.length === 1 ? " bolla (" : " bolle (") + ddt.join(", ") + "), " + arrivate + " righe con merce arrivata" +
+    const bolle = [...new Set(righe.map(r => r.numero))];
+    if (!confirm("Carico in SirJ " + nome + "?\n\n" + bolle.length + (bolle.length === 1 ? " bolla (" : " bolle (") + bolle.join(", ") + "), " + arrivate + " righe con merce arrivata" +
         (mancano ? "\n\nATTENZIONE: " + mancano + (mancano === 1 ? " riga non è stata sparata" : " righe non sono state sparate") + " e NON entrerà nel carico." : "") +
         "\n\nIl carico aggiorna la giacenza e scarica l'ordine a fornitore.")) return;
     fetch("https://ntfy.sh/" + canaleVeloce, { method: "POST", body: JSON.stringify(ddt == null ? { c: forn, t: Date.now() } : { c: forn, d: String(ddt), t: Date.now() }) })
