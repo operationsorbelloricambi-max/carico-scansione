@@ -179,6 +179,19 @@
   </div>
 </div>
 <div id="ver" style="position:fixed;right:6px;bottom:4px;font-size:11px;color:#718096;background:#fff;padding:1px 5px;border-radius:4px;z-index:3"></div>
+<div id="ubic" class="velo nascosto">
+  <div class="popup">
+    <div class="bolla rosso">Articolo senza ubicazione</div>
+    <div class="cod" id="uCod"></div>
+    <div class="des" id="uDes"></div>
+    <div class="bolla">Dove lo metti? Scrivi l'ubicazione</div>
+    <div class="mod"><input id="uTxt" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="20" placeholder="es. F2/173.R208" style="width:100%; font-size:28px;"></div>
+    <div class="err" id="uErr"></div>
+    <button class="primario" id="uOk">Salva e stampa</button>
+    <button id="uSenza">Stampa senza ubicazione</button>
+    <button id="uNo">Non stampare</button>
+  </div>
+</div>
 <div id="scelta" class="velo nascosto">
   <div class="popup">
     <div class="cod" id="sCod"></div>
@@ -364,6 +377,7 @@ if (typeof document !== "undefined") (function () {
         try {
           const d = JSON.parse(JSON.parse(ev.data).message);
           if (d && (d.e === "vivo" || d.e === "fermo")) { robot(d.e === "vivo" ? "" : d.m); return; }
+          if (d && d.e === "ubic") { codaUbic.push(d); if (navigator.vibrate) navigator.vibrate([150, 80, 150]); prossimaUbic(); return; }
           if (!d || !d.m) return;
           avviso(d.m, d.e === "ok" ? "verde" : "rosso"); attesaCarico = null;
           if (navigator.vibrate) navigator.vibrate(d.e === "ok" ? 150 : [150, 100, 150]);
@@ -391,6 +405,32 @@ if (typeof document !== "undefined") (function () {
   }
   document.addEventListener("visibilitychange", () => { if (!document.hidden) chiediRobot(); });
   setInterval(chiediRobot, 15 * 60 * 1000);
+  /* UBICAZIONE MANCANTE (utente, 25/11/2026): se l'articolo in SirJ non ha l'ubicazione il robot non stampa e lo dice qui;
+     l'operaio la scrive, il robot la salva in SirJ (Anagrafica Articoli) e stampa l'etichetta con l'ubicazione. */
+  const codaUbic = []; let ubicAperta = null;
+  function prossimaUbic() {
+    if (ubicAperta || !codaUbic.length) return;
+    if (attiva || scelta) { setTimeout(prossimaUbic, 800); return; }      // prima si finisce la finestrella già aperta
+    ubicAperta = codaUbic.shift();
+    $("uCod").textContent = ubicAperta.m || ubicAperta.r; $("uDes").textContent = ubicAperta.d || ""; $("uTxt").value = ""; $("uErr").textContent = "";
+    $("ubic").classList.remove("nascosto"); setTimeout(() => $("uTxt").focus(), 100);
+  }
+  function rispondiUbic(testo, stampa) {
+    const d = ubicAperta; if (!d) return;
+    const t = (testo || "").trim().toUpperCase().replace(/\s+/g, " ");
+    if (testo !== null && stampa && testo !== "" && !/^[A-Z0-9][A-Z0-9 \/.\-_]{0,19}$/.test(t)) { $("uErr").textContent = "Solo lettere, numeri e / . - _ (massimo 20)"; return; }
+    $("ubic").classList.add("nascosto"); ubicAperta = null;
+    if (stampa) {
+      fetch("https://ntfy.sh/" + canaleVeloce, { method: "POST", body: JSON.stringify({ u: d.r, n: d.n, ub: t, t: Date.now() }) })
+        .then(r => { if (!r.ok) throw new Error("risposta " + r.status); avviso((d.m || "") + (t ? ": ubicazione " + t + " mandata, attendi l'etichetta…" : ": stampo senza ubicazione…"), "giallo"); })
+        .catch(e => avviso("UBICAZIONE NON MANDATA (" + (e && e.message ? e.message : e) + "): riconferma la quantità per riprovare.", "rosso"));
+    } else avviso((d.m || "") + ": etichetta NON stampata (manca l'ubicazione).", "giallo");
+    setTimeout(prossimaUbic, 300);
+  }
+  $("uOk").onclick = () => { if (!$("uTxt").value.trim()) { $("uErr").textContent = "Scrivi l'ubicazione, oppure scegli «Stampa senza ubicazione»"; return; } rispondiUbic($("uTxt").value, true); };
+  $("uSenza").onclick = () => rispondiUbic("", true);
+  $("uNo").onclick = () => rispondiUbic(null, false);
+  $("uTxt").addEventListener("keydown", e => { if (e.key === "Enter") $("uOk").click(); });
   let attesaCarico = null;
   /* «Chiudi fornitore» (titolare, 24/11/2026): con un solo tasto il robot carica in SirJ tutte le bolle del fornitore
      (carico da file con le quantità confermate, scarico dell'ordine a fornitore) e chiude le bolle nell'app. */
@@ -751,6 +791,7 @@ if (typeof document !== "undefined") (function () {
   $("btnDemo").addEventListener("click", () => aggiungi(DEMO));
   $("sparo").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); e.stopPropagation(); const c = e.target.value; e.target.value = ""; sparato(c); } });
   document.addEventListener("keydown", e => {
+    if (ubicAperta) return;                                               // si sta scrivendo l'ubicazione: i tasti vanno lì
     if (scelta) {
       if (e.key === "Escape") { e.preventDefault(); avviso(""); annullaScelta(); if (tastiera) $("sparo").focus(); }
       else if (/^[1-9]$/.test(e.key)) { e.preventDefault(); scegli(+e.key - 1); }
@@ -798,7 +839,7 @@ if (typeof document !== "undefined") (function () {
 
   /* Versione della pagina: il telefono può tenere in memoria una copia vecchia anche per 10 minuti. In basso a destra si legge
      quale versione è aperta; se in linea ce n'è una più nuova, la pagina si ricarica da sola (una volta) per prenderla. */
-  const VERSIONE = "25/11 10:13";
+  const VERSIONE = "25/11 10:38";
   if (VERSIONE.indexOf("__") !== 0) {
     $("ver").textContent = "versione " + VERSIONE;
     if (/^https?:$/.test(location.protocol)) fetch("versione.txt?" + Date.now(), { cache: "no-store" }).then(r => r.ok ? r.text() : "").then(t => {
