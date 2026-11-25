@@ -867,7 +867,7 @@ if (typeof document !== "undefined") (function () {
 
   /* Versione della pagina: il telefono può tenere in memoria una copia vecchia anche per 10 minuti. In basso a destra si legge
      quale versione è aperta; se in linea ce n'è una più nuova, la pagina si ricarica da sola (una volta) per prenderla. */
-  const VERSIONE = "25/11 14:58";
+  const VERSIONE = "25/11 14:59";
   if (VERSIONE.indexOf("__") !== 0) {
     $("ver").textContent = "versione " + VERSIONE;
     if (/^https?:$/.test(location.protocol)) fetch("versione.txt?" + Date.now(), { cache: "no-store" }).then(r => r.ok ? r.text() : "").then(t => {
