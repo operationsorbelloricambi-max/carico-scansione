@@ -120,6 +120,7 @@
       <button id="btnZoom" class="nascosto">Zoom</button>
     </div>
     <div id="camera" class="nascosto"></div>
+    <div id="robot" class="avviso rosso nascosto"></div>
     <div id="avviso" class="avviso nascosto"></div>
     <div class="conti">
       <span class="v">Verdi <b id="nV">0</b></span>
@@ -338,7 +339,7 @@ if (typeof document !== "undefined") (function () {
   if (remoto && window.crypto && crypto.subtle) {
     const cod = remoto.replace(/^.*\/s\//, "").replace(/\/exec$/, "");
     crypto.subtle.digest("SHA-256", new TextEncoder().encode("etichette:" + cod))
-      .then(b => { canaleVeloce = "cs" + [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, "0")).join("").slice(0, 40); ascoltaEsiti(); }).catch(() => {});
+      .then(b => { canaleVeloce = "cs" + [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, "0")).join("").slice(0, 40); ascoltaEsiti(); setTimeout(chiediRobot, 1500); }).catch(() => {});
   }
   /* Risposte del robot (es. esito del carico in SirJ dopo «Chiudi fornitore»): arrivano sullo stesso canale istantaneo. */
   function ascoltaEsiti() {
@@ -347,6 +348,7 @@ if (typeof document !== "undefined") (function () {
       es.onmessage = ev => {
         try {
           const d = JSON.parse(JSON.parse(ev.data).message);
+          if (d && (d.e === "vivo" || d.e === "fermo")) { robot(d.e === "vivo" ? "" : d.m); return; }
           if (!d || !d.m) return;
           avviso(d.m, d.e === "ok" ? "verde" : "rosso"); attesaCarico = null;
           if (navigator.vibrate) navigator.vibrate(d.e === "ok" ? 150 : [150, 100, 150]);
@@ -355,6 +357,25 @@ if (typeof document !== "undefined") (function () {
       };
     } catch (e) {}
   }
+  /* STATO DEL ROBOT (25/11/2026: il robot era rimasto fermo una notte senza che nessuno lo sapesse). Il telefono chiede
+     «ci sei?» all'apertura, quando si torna sulla pagina e ogni 15 minuti; se il robot non risponde entro 10 secondi, o dice
+     di non essere collegato a SirJ, compare la striscia rossa fissa. Pochi messaggi: il servizio ne concede un numero limitato al giorno. */
+  let robotGiu = null, attesaRobot = null, ultimaDomanda = 0;
+  function robot(problema) {
+    clearTimeout(attesaRobot); attesaRobot = null;
+    const era = robotGiu; robotGiu = problema || null;
+    const a = $("robot"); a.textContent = problema || ""; a.classList.toggle("nascosto", !problema);
+    if (problema && !era && navigator.vibrate) navigator.vibrate([200, 100, 200]);
+  }
+  function chiediRobot() {
+    if (!canaleVeloce || document.hidden || Date.now() - ultimaDomanda < 20000) return;
+    ultimaDomanda = Date.now();
+    fetch("https://ntfy.sh/" + canaleVeloce, { method: "POST", body: JSON.stringify({ p: 1, t: Date.now() }) }).catch(() => {});
+    clearTimeout(attesaRobot);
+    attesaRobot = setTimeout(() => robot("ROBOT SPENTO O NON RAGGIUNGIBILE: le etichette NON si stampano e «Chiudi fornitore» non funziona. Controllare il Mac mini."), 10000);
+  }
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) chiediRobot(); });
+  setInterval(chiediRobot, 15 * 60 * 1000);
   let attesaCarico = null;
   /* «Chiudi fornitore» (titolare, 24/11/2026): con un solo tasto il robot carica in SirJ tutte le bolle del fornitore
      (carico da file con le quantità confermate, scarico dell'ordine a fornitore) e chiude le bolle nell'app. */
@@ -373,6 +394,7 @@ if (typeof document !== "undefined") (function () {
   }
   function stampaVeloce(id, n) {
     if (!canaleVeloce || !(n > 0)) return;
+    if (robotGiu) { avviso("ETICHETTA NON STAMPATA: il robot è fermo. La quantità viene salvata lo stesso.", "rosso"); if (navigator.vibrate) navigator.vibrate([200, 100, 200]); chiediRobot(); }
     fetch("https://ntfy.sh/" + canaleVeloce, { method: "POST", body: JSON.stringify({ r: id, n: n, t: Date.now() }), keepalive: true }).catch(() => {});
   }
   function invia(id, modo, q, etichette, nuovi) {      // etichette: quante stamparne; se non è indicato, una per ogni pezzo nuovo
@@ -749,7 +771,7 @@ if (typeof document !== "undefined") (function () {
 
   /* Versione della pagina: il telefono può tenere in memoria una copia vecchia anche per 10 minuti. In basso a destra si legge
      quale versione è aperta; se in linea ce n'è una più nuova, la pagina si ricarica da sola (una volta) per prenderla. */
-  const VERSIONE = "24/11 16:50";
+  const VERSIONE = "25/11 08:37";
   if (VERSIONE.indexOf("__") !== 0) {
     $("ver").textContent = "versione " + VERSIONE;
     if (/^https?:$/.test(location.protocol)) fetch("versione.txt?" + Date.now(), { cache: "no-store" }).then(r => r.ok ? r.text() : "").then(t => {
