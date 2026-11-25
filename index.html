@@ -342,6 +342,12 @@ if (typeof document !== "undefined") (function () {
         .then(j => { if (!j || !j.ok) throw new Error((j && j.errore) || "risposta non valida"); return j.ris; });
   let operatore = "";
   try { operatore = localStorage.getItem("carico-operatore") || ""; } catch (e) {}
+  /* Link personali (utente, 25/11/2026): …/?op=EMANUELE#CODICE apre la pagina già con quel nome, senza chiederlo
+     (admin = …/?op=ADMIN). Il nome del link vince su quello ricordato dal telefono e viene ricordato a sua volta. */
+  try {
+    const dalLink = (new URLSearchParams(location.search).get("op") || "").trim().toUpperCase();
+    if (/^[A-Z0-9][A-Z0-9 ._-]{0,19}$/.test(dalLink)) { operatore = dalLink; localStorage.setItem("carico-operatore", operatore); }
+  } catch (e) {}
   const tastiera = window.matchMedia && matchMedia("(pointer:fine)").matches;  // PC con lettore: il cursore torna da solo nel campo
 
   const DEMO = [
@@ -867,12 +873,12 @@ if (typeof document !== "undefined") (function () {
 
   /* Versione della pagina: il telefono può tenere in memoria una copia vecchia anche per 10 minuti. In basso a destra si legge
      quale versione è aperta; se in linea ce n'è una più nuova, la pagina si ricarica da sola (una volta) per prenderla. */
-  const VERSIONE = "25/11 14:59";
+  const VERSIONE = "25/11 15:49";
   if (VERSIONE.indexOf("__") !== 0) {
     $("ver").textContent = "versione " + VERSIONE;
     if (/^https?:$/.test(location.protocol)) fetch("versione.txt?" + Date.now(), { cache: "no-store" }).then(r => r.ok ? r.text() : "").then(t => {
       t = t.trim();
-      if (t && t !== VERSIONE && new URLSearchParams(location.search).get("v") !== t) location.replace(location.pathname + "?v=" + encodeURIComponent(t) + location.hash);
+      if (t && t !== VERSIONE && new URLSearchParams(location.search).get("v") !== t) { const qs = new URLSearchParams(location.search); qs.set("v", t); location.replace(location.pathname + "?" + qs.toString() + location.hash); }
     }).catch(() => {});
   }
   if (foglio) {
