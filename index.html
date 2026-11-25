@@ -71,7 +71,22 @@
   .lista button small { display:block; color:var(--grigio); font-size:14px; margin-top:2px; }
   .lista button.ok { background:#dcf5e6; } .lista button.parz { background:#fff3c4; } .lista button.diff { background:#fde3e3; }
   .nascosto { display:none !important; }
+  /* Telefono (25/11/2026): le finestrelle uscivano a destra perché la tabella allargava la pagina oltre lo schermo. */
+  html, body { max-width:100%; overflow-x:hidden; }
+  .scorri { max-width:100%; overflow-x:auto; }
+  .velo { padding:12px; }
+  .popup { max-width:min(420px, 100%); max-height:calc(100dvh - 24px); overflow-y:auto; min-width:0; }
+  .popup > * { min-width:0; max-width:100%; overflow-wrap:anywhere; }
+  .popup button { width:100%; white-space:normal; }
+  .popup .mod button { width:64px; flex:0 0 64px; }
   @media (max-width:640px) {
+    .popup { padding:14px; gap:8px; }
+    .popup .cod { font-size:22px; }
+    .popup .des { font-size:14px; }
+    .popup .qta { font-size:56px; }
+    .popup button { font-size:17px; padding:12px; }
+    .popup #cOk { font-size:22px; padding:16px; }
+    .popup .mod input { font-size:32px; width:120px; }
     main { padding:10px; }
     header { padding:8px 10px; gap:8px; }
     header h1 { font-size:16px; }
@@ -129,10 +144,10 @@
       <span class="a">Da sparare <b id="nA">0</b></span>
       <span class="r">Non in bolla <b id="nX">0</b></span>
     </div>
-    <table>
+    <div class="scorri"><table>
       <thead><tr><th class="col-marca">Marca</th><th>Codice catalogo</th><th>Descrizione</th><th class="n">Bolla</th><th class="n">Arrivati</th><th>Stato</th><th class="col-azzera"></th></tr></thead>
       <tbody id="righe"></tbody>
-    </table>
+    </table></div>
     <div id="boxExtra" class="nascosto">
       <h2>Non in bolla</h2>
       <table>
@@ -491,7 +506,7 @@ if (typeof document !== "undefined") (function () {
   function chiediRiga(i) {
     const r = st.righe[i], n = fmt(r.qta), base = { tipo: "riga", i, codice: norm(r.codice), descrizione: r.descrizione, doc: r.fornitore + " · DDT " + (r.numero || "?") };
     if (r.arrivati == null)            // mai sparata: «in bolla ce ne sono N, confermi?»
-      popup({ ...base, modo: "tot", testa: "Attenzione: in bolla ce ne sono", grande: n, ok: "Confermo, ci sono tutti e " + n,
+      popup({ ...base, modo: "tot", testa: Number(n) === 1 ? "Attenzione: in bolla ce n'è" : "Attenzione: in bolla ce ne sono", grande: n, ok: Number(n) === 1 ? "Confermo, c'è" : "Confermo, ci sono tutti e " + n,
         altro: "Per ora ne ho di meno (o di più)", eti: "Quanti ne hai adesso?", valoreOk: r.qta, scrivi: n });
     else if (r.arrivati < r.qta) {     // segnata in parte: «sono arrivati gli altri M»
       const m = fmt(r.qta - r.arrivati);
@@ -771,7 +786,7 @@ if (typeof document !== "undefined") (function () {
 
   /* Versione della pagina: il telefono può tenere in memoria una copia vecchia anche per 10 minuti. In basso a destra si legge
      quale versione è aperta; se in linea ce n'è una più nuova, la pagina si ricarica da sola (una volta) per prenderla. */
-  const VERSIONE = "25/11 08:37";
+  const VERSIONE = "25/11 10:04";
   if (VERSIONE.indexOf("__") !== 0) {
     $("ver").textContent = "versione " + VERSIONE;
     if (/^https?:$/.test(location.protocol)) fetch("versione.txt?" + Date.now(), { cache: "no-store" }).then(r => r.ok ? r.text() : "").then(t => {
