@@ -108,7 +108,7 @@
   <span class="doc" id="doc"></span>
   <span class="spazio"></span>
   <label id="btnAggiungi" class="bottone nascosto" for="file">Aggiungi bolle</label>
-  <button id="btnChiudi" class="primario nascosto">Chiudi fornitore</button>
+  <button id="btnChiudi" class="primario nascosto">Chiudi DDT</button>
   <button id="btnNuovo" class="nascosto">Svuota tutto</button>
 </header>
 <main>
@@ -446,19 +446,20 @@ if (typeof document !== "undefined") (function () {
   let attesaCarico = null;
   /* «Chiudi fornitore» (titolare, 24/11/2026): con un solo tasto il robot carica in SirJ tutte le bolle del fornitore
      (carico da file con le quantità confermate, scarico dell'ordine a fornitore) e chiude le bolle nell'app. */
-  function chiudiInSirj(forn) {
-    const righe = st.righe.filter(r => r.fornitore === forn);
+  function chiudiInSirj(forn, ddt) {      // ddt = numero della bolla da chiudere («Chiudi DDT», 25/11/2026: una bolla alla volta)
+    const righe = st.righe.filter(r => r.fornitore === forn && (ddt == null || String(r.numero) === String(ddt)));
+    const nome = forn + (ddt == null ? "" : " · DDT " + ddt);
     const mancano = righe.filter(r => r.arrivati == null).length, arrivate = righe.filter(r => r.arrivati > 0).length;
-    if (!arrivate) { avviso(forn + ": nessun pezzo confermato, niente da caricare", "giallo"); return; }
+    if (!arrivate) { avviso(nome + ": nessun pezzo confermato, niente da caricare", "giallo"); return; }
     const sospese = righe.filter(r => r.arrivati > 0 && daAbbinare(r));
-    if (sospese.length) { avviso(forn + " NON si può caricare: " + sospese.length + (sospese.length === 1 ? " riga ha" : " righe hanno") + " la marca ancora DA ABBINARE (" + sospese.slice(0, 4).map(r => r.codice).join(", ") + "). Il robot le sta cercando in SirJ: ricarica la pagina tra un minuto; se restano, avvisa Davide.", "rosso"); if (navigator.vibrate) navigator.vibrate([200, 100, 200]); return; }
+    if (sospese.length) { avviso(nome + " NON si può caricare: " + sospese.length + (sospese.length === 1 ? " riga ha" : " righe hanno") + " la marca ancora DA ABBINARE (" + sospese.slice(0, 4).map(r => r.codice).join(", ") + "). Il robot le sta cercando in SirJ: ricarica la pagina tra un minuto; se restano, avvisa Davide.", "rosso"); if (navigator.vibrate) navigator.vibrate([200, 100, 200]); return; }
     const ddt = [...new Set(righe.map(r => r.numero))];
-    if (!confirm("Carico in SirJ " + forn + "?\n\n" + ddt.length + (ddt.length === 1 ? " bolla (" : " bolle (") + ddt.join(", ") + "), " + arrivate + " righe con merce arrivata" +
+    if (!confirm("Carico in SirJ " + nome + "?\n\n" + ddt.length + (ddt.length === 1 ? " bolla (" : " bolle (") + ddt.join(", ") + "), " + arrivate + " righe con merce arrivata" +
         (mancano ? "\n\nATTENZIONE: " + mancano + (mancano === 1 ? " riga non è stata sparata" : " righe non sono state sparate") + " e NON entrerà nel carico." : "") +
         "\n\nIl carico aggiorna la giacenza e scarica l'ordine a fornitore.")) return;
-    fetch("https://ntfy.sh/" + canaleVeloce, { method: "POST", body: JSON.stringify({ c: forn, t: Date.now() }) })
-      .then(r => { if (!r.ok) throw new Error("risposta " + r.status); avviso(forn + ": richiesta di carico mandata a SirJ. Attendi l'esito (circa un minuto)…", "giallo");
-        attesaCarico = setTimeout(() => { if (attesaCarico) avviso(forn + ": nessuna risposta dal robot dopo 4 minuti. Controllare che sia acceso prima di riprovare.", "rosso"); }, 240000); })
+    fetch("https://ntfy.sh/" + canaleVeloce, { method: "POST", body: JSON.stringify(ddt == null ? { c: forn, t: Date.now() } : { c: forn, d: String(ddt), t: Date.now() }) })
+      .then(r => { if (!r.ok) throw new Error("risposta " + r.status); avviso(nome + ": richiesta di carico mandata a SirJ. Attendi l'esito (circa un minuto): il carico viene anche stampato sulla Logistica…", "giallo");
+        attesaCarico = setTimeout(() => { if (attesaCarico) avviso(nome + ": nessuna risposta dal robot dopo 4 minuti. Controllare che sia acceso prima di riprovare.", "rosso"); }, 240000); })
       .catch(e => avviso("Richiesta di carico NON partita (" + (e && e.message ? e.message : e) + "). Riprova.", "rosso"));
   }
   /* Riga con la marca ancora da abbinare (nel foglio «FORNITORE:sigla»): il robot non può né stampare né caricare finché manca
@@ -786,14 +787,22 @@ if (typeof document !== "undefined") (function () {
     }, 700);
   }
   function chiudiFornitore() {
-    const voci = [...new Set(st.righe.map(r => r.fornitore))].map(f => {
-      const rr = st.righe.filter(r => r.fornitore === f), n = new Set(rr.map(r => r.numero)).size;
-      const fatte = rr.filter(r => r.arrivati != null).length;
-      return { titolo: f, classe: fatte === rr.length ? "ok" : (fatte ? "parz" : ""),
-        sotto: n + " DDT · " + fatte + " di " + rr.length + " righe sparate" + (canaleVeloce ? " · carica in SirJ" : ""), azione: () => (canaleVeloce ? chiudiInSirj(f) : chiudi(f)) };
-    });
+    /* «Chiudi DDT» (utente, 25/11/2026): con il robot si chiude UNA BOLLA alla volta; appena chiusa parte il carico in SirJ di quella
+       bolla, con la stampa sulla Logistica. Senza robot (file da scaricare) si chiude ancora un fornitore intero. */
+    const voci = canaleVeloce
+      ? [...new Set(st.righe.map(r => r.fornitore + "\u0001" + r.numero))].map(k => {
+          const f = k.split("\u0001")[0], n = k.split("\u0001")[1];
+          const rr = st.righe.filter(r => r.fornitore === f && String(r.numero) === n), fatte = rr.filter(r => r.arrivati != null).length;
+          return { titolo: f + " · DDT " + n, classe: fatte === rr.length ? "ok" : (fatte ? "parz" : ""),
+            sotto: fatte + " di " + rr.length + " righe sparate · carica in SirJ e stampa", azione: () => chiudiInSirj(f, n) };
+        })
+      : [...new Set(st.righe.map(r => r.fornitore))].map(f => {
+          const rr = st.righe.filter(r => r.fornitore === f), n = new Set(rr.map(r => r.numero)).size;
+          const fatte = rr.filter(r => r.arrivati != null).length;
+          return { titolo: f, classe: fatte === rr.length ? "ok" : (fatte ? "parz" : ""), sotto: n + " DDT · " + fatte + " di " + rr.length + " righe sparate", azione: () => chiudi(f) };
+        });
     if (st.extra.length) voci.push({ titolo: "Pezzi non in nessuna bolla", classe: "diff", sotto: st.extra.length + " codici", azione: chiudiExtra });
-    apriScelta("Chiudi fornitore", "Quale fornitore hai finito?", voci);
+    apriScelta(canaleVeloce ? "Chiudi DDT" : "Chiudi fornitore", canaleVeloce ? "Quale bolla hai finito?" : "Quale fornitore hai finito?", voci);
   }
 
   $("file").addEventListener("change", async e => {
@@ -858,7 +867,7 @@ if (typeof document !== "undefined") (function () {
 
   /* Versione della pagina: il telefono può tenere in memoria una copia vecchia anche per 10 minuti. In basso a destra si legge
      quale versione è aperta; se in linea ce n'è una più nuova, la pagina si ricarica da sola (una volta) per prenderla. */
-  const VERSIONE = "25/11 12:44";
+  const VERSIONE = "25/11 14:58";
   if (VERSIONE.indexOf("__") !== 0) {
     $("ver").textContent = "versione " + VERSIONE;
     if (/^https?:$/.test(location.protocol)) fetch("versione.txt?" + Date.now(), { cache: "no-store" }).then(r => r.ok ? r.text() : "").then(t => {
