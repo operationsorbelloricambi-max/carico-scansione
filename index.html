@@ -181,10 +181,10 @@
 <div id="ver" style="position:fixed;right:6px;bottom:4px;font-size:11px;color:#718096;background:#fff;padding:1px 5px;border-radius:4px;z-index:3"></div>
 <div id="ubic" class="velo nascosto">
   <div class="popup">
-    <div class="bolla rosso">Articolo senza ubicazione</div>
+    <div class="bolla rosso" id="uTit">Articolo senza ubicazione</div>
     <div class="cod" id="uCod"></div>
     <div class="des" id="uDes"></div>
-    <div class="bolla">Dove lo metti? Scrivi l'ubicazione</div>
+    <div class="bolla" id="uDom">Dove lo metti? Scrivi l'ubicazione</div>
     <div class="mod"><input id="uTxt" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="20" placeholder="es. F2/173.R208" style="width:100%; font-size:28px;"></div>
     <div class="err" id="uErr"></div>
     <button class="primario" id="uOk">Salva e stampa</button>
@@ -377,7 +377,7 @@ if (typeof document !== "undefined") (function () {
         try {
           const d = JSON.parse(JSON.parse(ev.data).message);
           if (d && (d.e === "vivo" || d.e === "fermo")) { robot(d.e === "vivo" ? "" : d.m); return; }
-          if (d && d.e === "ubic") { codaUbic.push(d); if (navigator.vibrate) navigator.vibrate([150, 80, 150]); prossimaUbic(); return; }
+          if (d && (d.e === "ubic" || d.e === "crea")) { codaUbic.push(d); if (navigator.vibrate) navigator.vibrate([150, 80, 150]); prossimaUbic(); return; }
           if (!d || !d.m) return;
           avviso(d.m, d.e === "ok" ? "verde" : "rosso"); attesaCarico = null;
           if (navigator.vibrate) navigator.vibrate(d.e === "ok" ? 150 : [150, 100, 150]);
@@ -412,6 +412,14 @@ if (typeof document !== "undefined") (function () {
     if (ubicAperta || !codaUbic.length) return;
     if (attiva || scelta) { setTimeout(prossimaUbic, 800); return; }      // prima si finisce la finestrella già aperta
     ubicAperta = codaUbic.shift();
+    /* ARTICOLO CHE IN SIRJ NON ESISTE (utente, 25/11/2026): stessa finestrella, ma chiede «Lo creo?». Se sì il robot crea l'articolo
+       (sul PC Windows), mette codice a barre e ubicazione e stampa. L'ubicazione qui è facoltativa. */
+    const crea = ubicAperta.e === "crea";
+    $("uTit").textContent = crea ? "Articolo NON in anagrafica: lo creo?" : "Articolo senza ubicazione";
+    $("uDom").textContent = crea ? "Ubicazione (se la sai già)" : "Dove lo metti? Scrivi l'ubicazione";
+    $("uOk").textContent = crea ? "Sì, crealo e stampa" : "Salva e stampa";
+    $("uSenza").style.display = crea ? "none" : "";
+    $("uNo").textContent = crea ? "No, non crearlo" : "Non stampare";
     $("uCod").textContent = ubicAperta.m || ubicAperta.r; $("uDes").textContent = ubicAperta.d || ""; $("uTxt").value = ""; $("uErr").textContent = "";
     $("ubic").classList.remove("nascosto"); setTimeout(() => $("uTxt").focus(), 100);
   }
@@ -420,14 +428,18 @@ if (typeof document !== "undefined") (function () {
     const t = (testo || "").trim().toUpperCase().replace(/\s+/g, " ");
     if (testo !== null && stampa && testo !== "" && !/^[A-Z0-9][A-Z0-9 \/.\-_]{0,19}$/.test(t)) { $("uErr").textContent = "Solo lettere, numeri e / . - _ (massimo 20)"; return; }
     $("ubic").classList.add("nascosto"); ubicAperta = null;
-    if (stampa) {
+    if (stampa && d.e === "crea") {
+      fetch("https://ntfy.sh/" + canaleVeloce, { method: "POST", body: JSON.stringify({ k: d.r, n: d.n, ub: t, t: Date.now() }) })
+        .then(r => { if (!r.ok) throw new Error("risposta " + r.status); avviso((d.m || "") + ": creo l'articolo in SirJ, attendi qualche secondo…", "giallo"); })
+        .catch(e => avviso("RICHIESTA NON MANDATA (" + (e && e.message ? e.message : e) + "): riconferma la quantità per riprovare.", "rosso"));
+    } else if (stampa) {
       fetch("https://ntfy.sh/" + canaleVeloce, { method: "POST", body: JSON.stringify({ u: d.r, n: d.n, ub: t, t: Date.now() }) })
         .then(r => { if (!r.ok) throw new Error("risposta " + r.status); avviso((d.m || "") + (t ? ": ubicazione " + t + " mandata, attendi l'etichetta…" : ": stampo senza ubicazione…"), "giallo"); })
         .catch(e => avviso("UBICAZIONE NON MANDATA (" + (e && e.message ? e.message : e) + "): riconferma la quantità per riprovare.", "rosso"));
-    } else avviso((d.m || "") + ": etichetta NON stampata (manca l'ubicazione).", "giallo");
+    } else avviso((d.m || "") + (d.e === "crea" ? ": articolo NON creato, etichetta non stampata." : ": etichetta NON stampata (manca l'ubicazione)."), "giallo");
     setTimeout(prossimaUbic, 300);
   }
-  $("uOk").onclick = () => { if (!$("uTxt").value.trim()) { $("uErr").textContent = "Scrivi l'ubicazione, oppure scegli «Stampa senza ubicazione»"; return; } rispondiUbic($("uTxt").value, true); };
+  $("uOk").onclick = () => { if (!$("uTxt").value.trim() && !(ubicAperta && ubicAperta.e === "crea")) { $("uErr").textContent = "Scrivi l'ubicazione, oppure scegli «Stampa senza ubicazione»"; return; } rispondiUbic($("uTxt").value, true); };
   $("uSenza").onclick = () => rispondiUbic("", true);
   $("uNo").onclick = () => rispondiUbic(null, false);
   $("uTxt").addEventListener("keydown", e => { if (e.key === "Enter") $("uOk").click(); });
@@ -839,7 +851,7 @@ if (typeof document !== "undefined") (function () {
 
   /* Versione della pagina: il telefono può tenere in memoria una copia vecchia anche per 10 minuti. In basso a destra si legge
      quale versione è aperta; se in linea ce n'è una più nuova, la pagina si ricarica da sola (una volta) per prenderla. */
-  const VERSIONE = "25/11 10:38";
+  const VERSIONE = "25/11 12:03";
   if (VERSIONE.indexOf("__") !== 0) {
     $("ver").textContent = "versione " + VERSIONE;
     if (/^https?:$/.test(location.protocol)) fetch("versione.txt?" + Date.now(), { cache: "no-store" }).then(r => r.ok ? r.text() : "").then(t => {
