@@ -450,6 +450,8 @@ if (typeof document !== "undefined") (function () {
     const righe = st.righe.filter(r => r.fornitore === forn);
     const mancano = righe.filter(r => r.arrivati == null).length, arrivate = righe.filter(r => r.arrivati > 0).length;
     if (!arrivate) { avviso(forn + ": nessun pezzo confermato, niente da caricare", "giallo"); return; }
+    const sospese = righe.filter(r => r.arrivati > 0 && daAbbinare(r));
+    if (sospese.length) { avviso(forn + " NON si può caricare: " + sospese.length + (sospese.length === 1 ? " riga ha" : " righe hanno") + " la marca ancora DA ABBINARE (" + sospese.slice(0, 4).map(r => r.codice).join(", ") + "). Il robot le sta cercando in SirJ: ricarica la pagina tra un minuto; se restano, avvisa Davide.", "rosso"); if (navigator.vibrate) navigator.vibrate([200, 100, 200]); return; }
     const ddt = [...new Set(righe.map(r => r.numero))];
     if (!confirm("Carico in SirJ " + forn + "?\n\n" + ddt.length + (ddt.length === 1 ? " bolla (" : " bolle (") + ddt.join(", ") + "), " + arrivate + " righe con merce arrivata" +
         (mancano ? "\n\nATTENZIONE: " + mancano + (mancano === 1 ? " riga non è stata sparata" : " righe non sono state sparate") + " e NON entrerà nel carico." : "") +
@@ -459,8 +461,13 @@ if (typeof document !== "undefined") (function () {
         attesaCarico = setTimeout(() => { if (attesaCarico) avviso(forn + ": nessuna risposta dal robot dopo 4 minuti. Controllare che sia acceso prima di riprovare.", "rosso"); }, 240000); })
       .catch(e => avviso("Richiesta di carico NON partita (" + (e && e.message ? e.message : e) + "). Riprova.", "rosso"));
   }
+  /* Riga con la marca ancora da abbinare (nel foglio «FORNITORE:sigla»): il robot non può né stampare né caricare finché manca
+     il precodice. Il 25/11/2026 tre righe così hanno fatto saltare il carico di Salamone: ora si vede subito e il carico si blocca prima. */
+  function daAbbinare(r) { return String(r.marca || "").indexOf(":") >= 0; }
   function stampaVeloce(id, n) {
     if (!canaleVeloce || !(n > 0)) return;
+    const rg = st && st.righe.find(x => x.id === id);
+    if (rg && daAbbinare(rg)) { avviso(rg.codice + ": MARCA DA ABBINARE, etichetta non stampata. La quantità viene salvata; l'etichetta esce quando la marca è sistemata (riconferma la riga).", "rosso"); if (navigator.vibrate) navigator.vibrate([200, 100, 200]); return; }
     if (robotGiu) { avviso("ETICHETTA NON STAMPATA: il robot è fermo. La quantità viene salvata lo stesso.", "rosso"); if (navigator.vibrate) navigator.vibrate([200, 100, 200]); chiediRobot(); }
     fetch("https://ntfy.sh/" + canaleVeloce, { method: "POST", body: JSON.stringify({ r: id, n: n, t: Date.now() }), keepalive: true }).catch(() => {});
   }
@@ -513,7 +520,7 @@ if (typeof document !== "undefined") (function () {
       const d = x.arrivati == null ? "" : x.arrivati - x.qta;
       const scritta = s === "ok" ? "OK" : s === "diff" ? "+" + fmt(d) : s === "parz" ? "mancano " + fmt(-d) : "";
       const sel = attiva && attiva.tipo === "riga" && attiva.i === i ? " attiva" : "";
-      return testa + `<tr data-riga="${i}" class="${s === "attesa" ? "" : s}${sel}"><td class="col-marca">${esc(x.marca)}</td><td><b>${esc(norm(x.codice))}</b>${norm(x.codice) === x.codice.toUpperCase() ? "" : `<small class="orig">${esc(x.codice)}</small>`}</td><td>${esc(x.descrizione)}</td>` +
+      return testa + `<tr data-riga="${i}" class="${s === "attesa" ? "" : s}${sel}"><td class="col-marca">${daAbbinare(x) ? '<b style="color:#c53030">DA ABBINARE</b>' : esc(x.marca)}</td><td><b>${esc(norm(x.codice))}</b>${norm(x.codice) === x.codice.toUpperCase() ? "" : `<small class="orig">${esc(x.codice)}</small>`}</td><td>${esc(x.descrizione)}</td>` +
         `<td class="n">${fmt(x.qta)}</td><td class="n">${x.arrivati == null ? "" : fmt(x.arrivati)}</td><td class="stato">${scritta}</td>` +
         `<td class="col-azzera">${x.arrivati == null ? "" : `<button class="piccolo" data-azzera="${i}">Azzera</button>`}</td></tr>`;
     }).join("");
@@ -851,7 +858,7 @@ if (typeof document !== "undefined") (function () {
 
   /* Versione della pagina: il telefono può tenere in memoria una copia vecchia anche per 10 minuti. In basso a destra si legge
      quale versione è aperta; se in linea ce n'è una più nuova, la pagina si ricarica da sola (una volta) per prenderla. */
-  const VERSIONE = "25/11 12:03";
+  const VERSIONE = "25/11 12:44";
   if (VERSIONE.indexOf("__") !== 0) {
     $("ver").textContent = "versione " + VERSIONE;
     if (/^https?:$/.test(location.protocol)) fetch("versione.txt?" + Date.now(), { cache: "no-store" }).then(r => r.ok ? r.text() : "").then(t => {
