@@ -114,6 +114,8 @@
   <h1>Carico a scansione</h1>
   <span class="doc" id="doc"></span>
   <span class="spazio"></span>
+  <!-- Tasto Aggiorna (Seby, 26/11/2026): nell'app installata sull'iPhone non c'è il «tira giù per aggiornare» né il tasto del browser -->
+  <button id="btnAggiorna" title="Aggiorna" style="font-size:1.25em;padding:6px 12px;line-height:1">&#x21BB;</button>
   <label id="btnAggiungi" class="bottone nascosto" for="file">Aggiungi bolle</label>
   <button id="btnChiudi" class="primario nascosto">Chiudi DDT</button>
   <button id="btnNuovo" class="nascosto">Svuota tutto</button>
@@ -994,6 +996,10 @@ if (typeof document !== "undefined") (function () {
   });
   $("cQta").addEventListener("input", () => { $("cErr").textContent = ""; });
   $("cMod").addEventListener("click", () => modifica());
+  $("btnAggiorna").addEventListener("click", () => {
+    if (attiva || scelta) { avviso("Finisci prima la conferma aperta, poi aggiorna.", "giallo"); return; }
+    const u = new URL(location.href); u.searchParams.set("r", Date.now()); location.replace(u.toString());
+  });
   $("cCodMod").addEventListener("click", cambiaCodice);
   $("cPreMod").addEventListener("click", cambiaPrecodice);
   $("cAzz").addEventListener("click", () => { const r = st.righe[attiva.i]; r.arrivati = null; invia(r.id, "tot", null); avviso(""); salva(); chiudiQta(); });
@@ -1027,7 +1033,7 @@ if (typeof document !== "undefined") (function () {
 
   /* Versione della pagina: il telefono può tenere in memoria una copia vecchia anche per 10 minuti. In basso a destra si legge
      quale versione è aperta; se in linea ce n'è una più nuova, la pagina si ricarica da sola (una volta) per prenderla. */
-  const VERSIONE = "26/11 14:40";
+  const VERSIONE = "26/11 17:50";
   if (VERSIONE.indexOf("__") !== 0) {
     $("ver").textContent = "versione " + VERSIONE;
     if (/^https?:$/.test(location.protocol)) fetch("versione.txt?" + Date.now(), { cache: "no-store" }).then(r => r.ok ? r.text() : "").then(t => {
