@@ -179,6 +179,19 @@
   </div>
 </div>
 <div id="ver" style="position:fixed;right:6px;bottom:4px;font-size:11px;color:#718096;background:#fff;padding:1px 5px;border-radius:4px;z-index:3"></div>
+<div id="prec" class="velo nascosto">
+  <div class="popup">
+    <div class="bolla rosso">Che marca è? Scegli il precodice</div>
+    <div class="cod" id="pCod"></div>
+    <div class="des" id="pDes"></div>
+    <div class="bolla" id="pDom"></div>
+    <div id="pOpz"></div>
+    <div class="mod"><input id="pTxt" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="6" placeholder="altro precodice (es. 107)" style="width:100%; font-size:24px;"></div>
+    <div class="err" id="pErr"></div>
+    <button id="pOk">Usa il precodice scritto</button>
+    <button id="pNo">Non stampare</button>
+  </div>
+</div>
 <div id="ubic" class="velo nascosto">
   <div class="popup">
     <div class="bolla rosso" id="uTit">Articolo senza ubicazione</div>
@@ -383,6 +396,8 @@ if (typeof document !== "undefined") (function () {
         try {
           const d = JSON.parse(JSON.parse(ev.data).message);
           if (d && (d.e === "vivo" || d.e === "fermo")) { robot(d.e === "vivo" ? "" : d.m); return; }
+          if (d && d.e === "prec") { codaPrec.push(d); if (navigator.vibrate) navigator.vibrate([150, 80, 150]); prossimaPrec(); return; }
+          if (d && d.e === "abbinata") { abbinate[d.r] = d.pre; try { localStorage.setItem("abbinate", JSON.stringify(abbinate)); } catch (e) {} if (!attiva && !scelta) disegna(); return; }
           if (d && (d.e === "ubic" || d.e === "crea")) { codaUbic.push(d); if (navigator.vibrate) navigator.vibrate([150, 80, 150]); prossimaUbic(); return; }
           if (!d || !d.m) return;
           avviso(d.m, d.e === "ok" ? "verde" : "rosso"); attesaCarico = null;
@@ -414,9 +429,43 @@ if (typeof document !== "undefined") (function () {
   /* UBICAZIONE MANCANTE (utente, 25/11/2026): se l'articolo in SirJ non ha l'ubicazione il robot non stampa e lo dice qui;
      l'operaio la scrive, il robot la salva in SirJ (Anagrafica Articoli) e stampa l'etichetta con l'ubicazione. */
   const codaUbic = []; let ubicAperta = null;
+  /* SCELTA DEL PRECODICE (utente, 26/11/2026): se la marca di una riga non è sicura (la bolla non la riporta, o in SirJ lo stesso
+     codice c'è con più precodici), dopo la conferma della quantità il robot manda qui i precodici possibili: l'operaio ne tocca
+     uno (o lo scrive), il robot lo fissa per quella riga, stampa l'etichetta e lo userà per caricare il DDT. */
+  const codaPrec = []; let precAperta = null;
+  function prossimaPrec() {
+    if (precAperta || !codaPrec.length) return;
+    if (attiva || scelta || ubicAperta) { setTimeout(prossimaPrec, 800); return; }      // prima si finisce la finestrella già aperta
+    precAperta = codaPrec.shift();
+    const o = Array.isArray(precAperta.o) ? precAperta.o : [];
+    $("pCod").textContent = precAperta.m || precAperta.r;
+    $("pDes").textContent = [precAperta.f, precAperta.s ? "sigla del fornitore: " + precAperta.s : "", precAperta.d].filter(Boolean).join(" · ");
+    $("pDom").textContent = o.length ? (o.length === 1 ? "In SirJ questo codice c'è con un solo precodice: confermalo" : "In SirJ questo codice c'è con " + o.length + " precodici: tocca quello giusto") : "In SirJ questo codice non c'è con nessun precodice: scrivilo tu";
+    $("pOpz").innerHTML = o.map(x => `<button class="primario" data-pre="${esc(x[0])}" style="margin-bottom:8px">${esc(x[0])}${x[1] ? " — " + esc(x[1]) : ""}</button>`).join("");
+    $("pTxt").value = ""; $("pErr").textContent = "";
+    $("prec").classList.remove("nascosto");
+  }
+  function rispondiPrec(pre) {
+    const d = precAperta; if (!d) return;
+    if (pre !== null) {
+      pre = String(pre || "").trim().toUpperCase().replace(/\s+/g, "");
+      if (!/^[A-Z0-9.\-]{1,6}$/.test(pre)) { $("pErr").textContent = "Scrivi il precodice (numero o sigla, massimo 6 caratteri)"; return; }
+    }
+    $("prec").classList.add("nascosto"); precAperta = null;
+    if (pre !== null) {
+      fetch("https://ntfy.sh/" + canaleVeloce, { method: "POST", body: JSON.stringify({ q: d.r, pre: pre, n: d.n, t: Date.now() }) })
+        .then(r => { if (!r.ok) throw new Error("risposta " + r.status); avviso((d.m || "") + ": precodice " + pre + " mandato, attendi l'etichetta…", "giallo"); })
+        .catch(e => avviso("PRECODICE NON MANDATO (" + (e && e.message ? e.message : e) + "): riconferma la quantità per riprovare.", "rosso"));
+    } else avviso((d.m || "") + ": etichetta NON stampata (precodice non scelto). La quantità resta salvata.", "giallo");
+    setTimeout(prossimaPrec, 300); setTimeout(prossimaUbic, 400);
+  }
+  $("pOpz").addEventListener("click", e => { const b = e.target.closest("button[data-pre]"); if (b) rispondiPrec(b.getAttribute("data-pre")); });
+  $("pOk").onclick = () => rispondiPrec($("pTxt").value);
+  $("pNo").onclick = () => rispondiPrec(null);
+  $("pTxt").addEventListener("keydown", e => { if (e.key === "Enter") $("pOk").click(); });
   function prossimaUbic() {
     if (ubicAperta || !codaUbic.length) return;
-    if (attiva || scelta) { setTimeout(prossimaUbic, 800); return; }      // prima si finisce la finestrella già aperta
+    if (attiva || scelta || precAperta) { setTimeout(prossimaUbic, 800); return; }      // prima si finisce la finestrella già aperta
     ubicAperta = codaUbic.shift();
     /* ARTICOLO CHE IN SIRJ NON ESISTE (utente, 25/11/2026): stessa finestrella, ma chiede «Lo creo?». Se sì il robot crea l'articolo
        (sul PC Windows), mette codice a barre e ubicazione e stampa. L'ubicazione qui è facoltativa. */
@@ -470,11 +519,14 @@ if (typeof document !== "undefined") (function () {
   }
   /* Riga con la marca ancora da abbinare (nel foglio «FORNITORE:sigla»): il robot non può né stampare né caricare finché manca
      il precodice. Il 25/11/2026 tre righe così hanno fatto saltare il carico di Salamone: ora si vede subito e il carico si blocca prima. */
-  function daAbbinare(r) { return String(r.marca || "").indexOf(":") >= 0; }
+  let abbinate = {};      // id riga -> precodice scelto dall'operaio (lo manda il robot; resta anche se il foglio non è ancora aggiornato)
+  try { abbinate = JSON.parse(localStorage.getItem("abbinate") || "{}") || {}; } catch (e) { abbinate = {}; }
+  function daAbbinare(r) { return String(r.marca || "").indexOf(":") >= 0 && !abbinate[r.id]; }
+  function marcaDi(r) { return String(r.marca || "").indexOf(":") >= 0 && abbinate[r.id] ? abbinate[r.id] : r.marca; }
   function stampaVeloce(id, n) {
     if (!canaleVeloce || !(n > 0)) return;
     const rg = st && st.righe.find(x => x.id === id);
-    if (rg && daAbbinare(rg)) { avviso(rg.codice + ": MARCA DA ABBINARE, etichetta non stampata. La quantità viene salvata; l'etichetta esce quando la marca è sistemata (riconferma la riga).", "rosso"); if (navigator.vibrate) navigator.vibrate([200, 100, 200]); return; }
+    if (rg && daAbbinare(rg) && !robotGiu) avviso(rg.codice + ": marca da scegliere. Tra un attimo compare la finestrella con i precodici…", "giallo");
     if (robotGiu) { avviso("ETICHETTA NON STAMPATA: il robot è fermo. La quantità viene salvata lo stesso.", "rosso"); if (navigator.vibrate) navigator.vibrate([200, 100, 200]); chiediRobot(); }
     fetch("https://ntfy.sh/" + canaleVeloce, { method: "POST", body: JSON.stringify({ r: id, n: n, t: Date.now() }), keepalive: true }).catch(() => {});
   }
@@ -527,7 +579,7 @@ if (typeof document !== "undefined") (function () {
       const d = x.arrivati == null ? "" : x.arrivati - x.qta;
       const scritta = s === "ok" ? "OK" : s === "diff" ? "+" + fmt(d) : s === "parz" ? "mancano " + fmt(-d) : "";
       const sel = attiva && attiva.tipo === "riga" && attiva.i === i ? " attiva" : "";
-      return testa + `<tr data-riga="${i}" class="${s === "attesa" ? "" : s}${sel}"><td class="col-marca">${daAbbinare(x) ? '<b style="color:#c53030">DA ABBINARE</b>' : esc(x.marca)}</td><td><b>${esc(norm(x.codice))}</b>${norm(x.codice) === x.codice.toUpperCase() ? "" : `<small class="orig">${esc(x.codice)}</small>`}</td><td>${esc(x.descrizione)}</td>` +
+      return testa + `<tr data-riga="${i}" class="${s === "attesa" ? "" : s}${sel}"><td class="col-marca">${daAbbinare(x) ? '<b style="color:#c53030">DA ABBINARE</b>' : esc(marcaDi(x))}</td><td><b>${esc(norm(x.codice))}</b>${norm(x.codice) === x.codice.toUpperCase() ? "" : `<small class="orig">${esc(x.codice)}</small>`}</td><td>${esc(x.descrizione)}</td>` +
         `<td class="n">${fmt(x.qta)}</td><td class="n">${x.arrivati == null ? "" : fmt(x.arrivati)}</td><td class="stato">${scritta}</td>` +
         `<td class="col-azzera">${x.arrivati == null ? "" : `<button class="piccolo" data-azzera="${i}">Azzera</button>`}</td></tr>`;
     }).join("");
@@ -873,7 +925,7 @@ if (typeof document !== "undefined") (function () {
 
   /* Versione della pagina: il telefono può tenere in memoria una copia vecchia anche per 10 minuti. In basso a destra si legge
      quale versione è aperta; se in linea ce n'è una più nuova, la pagina si ricarica da sola (una volta) per prenderla. */
-  const VERSIONE = "25/11 15:49";
+  const VERSIONE = "26/11 09:46";
   if (VERSIONE.indexOf("__") !== 0) {
     $("ver").textContent = "versione " + VERSIONE;
     if (/^https?:$/.test(location.protocol)) fetch("versione.txt?" + Date.now(), { cache: "no-store" }).then(r => r.ok ? r.text() : "").then(t => {
