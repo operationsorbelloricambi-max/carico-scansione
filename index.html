@@ -4,6 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="robots" content="noindex,nofollow">
+<!-- Icona col logo Sorbello per «Aggiungi a schermata Home» (26/11/2026). Niente «manifest»: così il collegamento salvato sul telefono conserva il link intero (nome operatore e codice del foglio). -->
+<link rel="apple-touch-icon" href="icona-180.png">
+<link rel="icon" type="image/png" href="icona-180.png">
+<meta name="apple-mobile-web-app-title" content="Carico Sorbello">
 <title>Carico a scansione</title>
 <style>
   :root { --verde:#1f9d55; --rosso:#d64545; --grigio:#6b7280; --bordo:#d9dde3; --sfondo:#f4f5f7; }
@@ -980,7 +984,7 @@ if (typeof document !== "undefined") (function () {
 
   /* Versione della pagina: il telefono può tenere in memoria una copia vecchia anche per 10 minuti. In basso a destra si legge
      quale versione è aperta; se in linea ce n'è una più nuova, la pagina si ricarica da sola (una volta) per prenderla. */
-  const VERSIONE = "26/11 12:11";
+  const VERSIONE = "26/11 12:15";
   if (VERSIONE.indexOf("__") !== 0) {
     $("ver").textContent = "versione " + VERSIONE;
     if (/^https?:$/.test(location.protocol)) fetch("versione.txt?" + Date.now(), { cache: "no-store" }).then(r => r.ok ? r.text() : "").then(t => {
