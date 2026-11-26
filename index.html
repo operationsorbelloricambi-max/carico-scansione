@@ -391,10 +391,16 @@ if (typeof document !== "undefined") (function () {
   /* Risposte del robot (es. esito del carico in SirJ dopo «Chiudi fornitore»): arrivano sullo stesso canale istantaneo. */
   function ascoltaEsiti() {
     try {
-      const es = new EventSource("https://ntfy.sh/" + canaleVeloce + "r/sse");
+      /* 26/11/2026: il telefono diceva «ROBOT SPENTO» anche col robot acceso che rispondeva in un secondo. Se la rete è lenta
+         l'ascolto si apre DOPO che la risposta è già passata, e andava persa. Ora all'apertura (e a ogni ricollegamento) si
+         chiedono anche i messaggi degli ultimi 20 secondi; ognuno ha un suo numero e non viene mai trattato due volte. */
+      const es = new EventSource("https://ntfy.sh/" + canaleVeloce + "r/sse?since=20s");
+      const giaVisti = new Set();
       es.onmessage = ev => {
         try {
-          const d = JSON.parse(JSON.parse(ev.data).message);
+          const busta = JSON.parse(ev.data);
+          if (busta.id) { if (giaVisti.has(busta.id)) return; giaVisti.add(busta.id); }
+          const d = JSON.parse(busta.message);
           if (d && (d.e === "vivo" || d.e === "fermo")) { robot(d.e === "vivo" ? "" : d.m); return; }
           if (d && d.e === "prec") { codaPrec.push(d); if (navigator.vibrate) navigator.vibrate([150, 80, 150]); prossimaPrec(); return; }
           if (d && d.e === "abbinata") { abbinate[d.r] = d.pre; try { localStorage.setItem("abbinate", JSON.stringify(abbinate)); } catch (e) {} if (!attiva && !scelta) disegna(); return; }
@@ -422,7 +428,11 @@ if (typeof document !== "undefined") (function () {
     ultimaDomanda = Date.now();
     fetch("https://ntfy.sh/" + canaleVeloce, { method: "POST", body: JSON.stringify({ p: 1, t: Date.now() }) }).catch(() => {});
     clearTimeout(attesaRobot);
-    attesaRobot = setTimeout(() => robot("ROBOT SPENTO O NON RAGGIUNGIBILE: le etichette NON si stampano e «Chiudi fornitore» non funziona. Controllare il Mac mini."), 10000);
+    /* se dopo 4 secondi non è arrivata risposta si richiede una seconda volta, e solo dopo 12 secondi in tutto si dà l'allarme */
+    const domanda = attesaRobot = setTimeout(() => {
+      fetch("https://ntfy.sh/" + canaleVeloce, { method: "POST", body: JSON.stringify({ p: 1, t: Date.now() }) }).catch(() => {});
+      attesaRobot = setTimeout(() => robot("ROBOT SPENTO O NON RAGGIUNGIBILE: le etichette NON si stampano e «Chiudi fornitore» non funziona. Controllare il Mac mini."), 8000);
+    }, 4000);
   }
   document.addEventListener("visibilitychange", () => { if (!document.hidden) chiediRobot(); });
   setInterval(chiediRobot, 15 * 60 * 1000);
@@ -925,7 +935,7 @@ if (typeof document !== "undefined") (function () {
 
   /* Versione della pagina: il telefono può tenere in memoria una copia vecchia anche per 10 minuti. In basso a destra si legge
      quale versione è aperta; se in linea ce n'è una più nuova, la pagina si ricarica da sola (una volta) per prenderla. */
-  const VERSIONE = "26/11 09:46";
+  const VERSIONE = "26/11 09:53";
   if (VERSIONE.indexOf("__") !== 0) {
     $("ver").textContent = "versione " + VERSIONE;
     if (/^https?:$/.test(location.protocol)) fetch("versione.txt?" + Date.now(), { cache: "no-store" }).then(r => r.ok ? r.text() : "").then(t => {
