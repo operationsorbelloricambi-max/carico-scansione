@@ -1003,7 +1003,7 @@ if (typeof document !== "undefined") (function () {
 
   /* Versione della pagina: il telefono può tenere in memoria una copia vecchia anche per 10 minuti. In basso a destra si legge
      quale versione è aperta; se in linea ce n'è una più nuova, la pagina si ricarica da sola (una volta) per prenderla. */
-  const VERSIONE = "26/11 12:18";
+  const VERSIONE = "26/11 12:24";
   if (VERSIONE.indexOf("__") !== 0) {
     $("ver").textContent = "versione " + VERSIONE;
     if (/^https?:$/.test(location.protocol)) fetch("versione.txt?" + Date.now(), { cache: "no-store" }).then(r => r.ok ? r.text() : "").then(t => {
@@ -1011,6 +1011,15 @@ if (typeof document !== "undefined") (function () {
       if (t && t !== VERSIONE && new URLSearchParams(location.search).get("v") !== t) { const qs = new URLSearchParams(location.search); qs.set("v", t); location.replace(location.pathname + "?" + qs.toString() + location.hash); }
     }).catch(() => {});
   }
+  /* Nome sbagliato (26/11/2026: a Davide è rimasto «DAVIE»): toccando la scritta in alto con bolle e nome lo si corregge. */
+  $("doc").style.cursor = "pointer";
+  $("doc").onclick = () => {
+    if (!foglio) return;
+    const n = (prompt("Nome dell'operatore su questo telefono:", operatore) || "").trim().toUpperCase();
+    if (!/^[A-Z0-9][A-Z0-9 ._-]{0,19}$/.test(n) || n === operatore) return;
+    operatore = n; try { localStorage.setItem("carico-operatore", operatore); } catch (e) {}
+    disegna(); avviso("Nome cambiato: " + operatore, "verde");
+  };
   if ($("recOk")) $("recOk").onclick = () => {
     try {
       const u = new URL(($("recLink").value || "").trim());
