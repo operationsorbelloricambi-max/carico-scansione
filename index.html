@@ -560,7 +560,7 @@ if (typeof document !== "undefined") (function () {
     const mancano = righe.filter(r => r.arrivati == null).length, arrivate = righe.filter(r => r.arrivati > 0).length;
     if (!arrivate) { avviso(nome + ": nessun pezzo confermato, niente da caricare", "giallo"); return; }
     const sospese = righe.filter(r => r.arrivati > 0 && daAbbinare(r));
-    if (sospese.length) { avviso(nome + " NON si può caricare: " + sospese.length + (sospese.length === 1 ? " riga ha" : " righe hanno") + " la marca ancora DA ABBINARE (" + sospese.slice(0, 4).map(r => r.codice).join(", ") + "). Il robot le sta cercando in SirJ: ricarica la pagina tra un minuto; se restano, avvisa Davide.", "rosso"); if (navigator.vibrate) navigator.vibrate([200, 100, 200]); return; }
+    if (sospese.length) { avviso(nome + " NON si può caricare: " + sospese.length + (sospese.length === 1 ? " riga ha" : " righe hanno") + " la marca ancora DA ABBINARE (" + sospese.slice(0, 4).map(r => r.codice).join(", ") + "). Il robot le sta cercando in SirJ: ricarica la pagina tra un minuto; se restano, apri la riga e scegli il precodice con «Modifica precodice» (oppure avvisa Seby o Davide).", "rosso"); if (navigator.vibrate) navigator.vibrate([200, 100, 200]); return; }
     const bolle = [...new Set(righe.map(r => r.numero))];
     if (!confirm("Carico in SirJ " + nome + "?\n\n" + bolle.length + (bolle.length === 1 ? " bolla (" : " bolle (") + bolle.join(", ") + "), " + arrivate + " righe con merce arrivata" +
         (mancano ? "\n\nATTENZIONE: " + mancano + (mancano === 1 ? " riga non è stata sparata" : " righe non sono state sparate") + " e NON entrerà nel carico." : "") +
@@ -1027,7 +1027,7 @@ if (typeof document !== "undefined") (function () {
 
   /* Versione della pagina: il telefono può tenere in memoria una copia vecchia anche per 10 minuti. In basso a destra si legge
      quale versione è aperta; se in linea ce n'è una più nuova, la pagina si ricarica da sola (una volta) per prenderla. */
-  const VERSIONE = "26/11 12:38";
+  const VERSIONE = "26/11 14:40";
   if (VERSIONE.indexOf("__") !== 0) {
     $("ver").textContent = "versione " + VERSIONE;
     if (/^https?:$/.test(location.protocol)) fetch("versione.txt?" + Date.now(), { cache: "no-store" }).then(r => r.ok ? r.text() : "").then(t => {
