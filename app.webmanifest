@@ -1,0 +1,16 @@
+{
+  "name": "Carico Sorbello",
+  "short_name": "Carico",
+  "description": "Carico merce a scansione - Sorbello Ricambi",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#ffffff",
+  "theme_color": "#1a202c",
+  "lang": "it",
+  "icons": [
+    { "src": "icona-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icona-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

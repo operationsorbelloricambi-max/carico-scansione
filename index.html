@@ -131,6 +131,10 @@
     <p class="nota">Puoi sceglierne quante vuoi insieme (tieni premuto Cmd per selezionarne più di una, o Cmd+A per tutte).<br>
        Il fornitore si prende dal nome del file: <b>bolla_autocom.csv</b> → <b>AUTOCOM</b>.</p>
     <p class="nota">Solo per provare, senza file: <button id="btnDemo" class="piccolo">Bolle di prova</button></p>
+    <!-- App installata che ha perso il collegamento (26/11/2026): si incolla una volta il proprio link personale -->
+    <p class="nota" id="recupero" style="margin-top:18px">Sei un operatore? Incolla qui il tuo link personale:<br>
+      <input id="recLink" type="url" inputmode="url" autocomplete="off" placeholder="https://…/carico-scansione/?op=NOME#…" style="width:100%;max-width:520px;margin:6px 0;padding:8px">
+      <button id="recOk" class="piccolo">Collega</button></p>
     </div>
   </section>
 
@@ -356,6 +360,21 @@ if (typeof document !== "undefined") (function () {
     return ok(id) ? "https://script.google.com/macros/s/" + id + "/exec" : null;
   })();
   const foglio = gs || remoto;
+  /* APP INSTALLABILE (utente, 26/11/2026, in prova su un telefono): con «app=1» nel link la pagina si può installare sul
+     telefono (a tutto schermo, con la sua icona e una copia di riserva se manca la rete). Android: file «manifest»; iPhone:
+     «Aggiungi a schermata Home» a tutto schermo (lì il collegamento conserva il link intero). Chi non ha «app=1» non cambia. */
+  try {
+    const inApp = (window.matchMedia && matchMedia("(display-mode: standalone)").matches) || navigator.standalone === true;
+    if (!gs && /^https:$/.test(location.protocol) && (/[?&]app=1(&|$)/.test(location.search) || localStorage.getItem("carico-app") === "1" || inApp)) {
+      localStorage.setItem("carico-app", "1");
+      const ios = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+      const metti = (tag, attr) => { const e = document.createElement(tag); Object.keys(attr).forEach(k => e.setAttribute(k, attr[k])); document.head.appendChild(e); };
+      if (ios) { metti("meta", { name: "apple-mobile-web-app-capable", content: "yes" }); metti("meta", { name: "apple-mobile-web-app-status-bar-style", content: "black" }); }
+      else metti("link", { rel: "manifest", href: "app.webmanifest" });
+      metti("meta", { name: "theme-color", content: "#1a202c" });
+      if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+    }
+  } catch (e) {}
   const server = gs
     ? (nome, ...arg) => new Promise((ok, ko) => gs.withSuccessHandler(ok).withFailureHandler(ko)[nome](...arg))
     : (nome, ...arg) => fetch(remoto + "?azione=pagina&f=" + encodeURIComponent(nome) + "&a=" + encodeURIComponent(JSON.stringify(arg)) + "&t=" + Date.now(), { redirect: "follow" })
@@ -984,7 +1003,7 @@ if (typeof document !== "undefined") (function () {
 
   /* Versione della pagina: il telefono può tenere in memoria una copia vecchia anche per 10 minuti. In basso a destra si legge
      quale versione è aperta; se in linea ce n'è una più nuova, la pagina si ricarica da sola (una volta) per prenderla. */
-  const VERSIONE = "26/11 12:15";
+  const VERSIONE = "26/11 12:18";
   if (VERSIONE.indexOf("__") !== 0) {
     $("ver").textContent = "versione " + VERSIONE;
     if (/^https?:$/.test(location.protocol)) fetch("versione.txt?" + Date.now(), { cache: "no-store" }).then(r => r.ok ? r.text() : "").then(t => {
@@ -992,6 +1011,16 @@ if (typeof document !== "undefined") (function () {
       if (t && t !== VERSIONE && new URLSearchParams(location.search).get("v") !== t) { const qs = new URLSearchParams(location.search); qs.set("v", t); location.replace(location.pathname + "?" + qs.toString() + location.hash); }
     }).catch(() => {});
   }
+  if ($("recOk")) $("recOk").onclick = () => {
+    try {
+      const u = new URL(($("recLink").value || "").trim());
+      const cod = decodeURIComponent(u.hash.replace(/^#/, "")), op = (u.searchParams.get("op") || "").trim().toUpperCase();
+      if (!/^[A-Za-z0-9_-]{30,}$/.test(cod)) throw 0;
+      localStorage.setItem("carico-foglio", cod);
+      if (/^[A-Z0-9][A-Z0-9 ._-]{0,19}$/.test(op)) localStorage.setItem("carico-operatore", op);
+      location.replace(location.pathname);
+    } catch (e) { avviso("Link non valido: incolla il link personale intero.", "rosso"); }
+  };
   if (foglio) {
     while (!operatore) operatore = (prompt("Come ti chiami? (resta salvato su questo dispositivo)") || "").trim().toUpperCase();
     try { localStorage.setItem("carico-operatore", operatore); } catch (e) {}
