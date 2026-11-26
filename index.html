@@ -174,6 +174,7 @@
     <div class="err" id="cErr"></div>
     <button id="cOk" class="primario">OK</button>
     <button id="cMod">Modifica quantità</button>
+    <button id="cCodMod" class="nascosto">Modifica codice</button>
     <button id="cNo">Annulla</button>
     <button id="cAzz" class="nascosto">Azzera questa riga</button>
   </div>
@@ -293,12 +294,12 @@ function statoRiga(r) { return r.arrivati == null ? "attesa" : (r.arrivati === r
 function trovaRighe(righe, sparato) {
   const k = norm(sparato);
   if (!k) return [];
-  let uguali = righe.map((r, i) => (norm(r.codice) === k || (r.barcode && norm(r.barcode) === k)) ? i : -1).filter(i => i >= 0);
+  let uguali = righe.map((r, i) => (norm(r.codice) === k || (r.orig && norm(r.orig) === k) || (r.barcode && norm(r.barcode) === k)) ? i : -1).filter(i => i >= 0);
   if (!uguali.length) {
     // Nessun codice identico: il codice a barre del pezzo spesso ha qualcosa in più del codice di bolla
     // (zeri davanti, una lettera o un precodice all'inizio, altri dati in coda) oppure ne è stata letta solo una parte.
     const simile = c => { c = norm(c); return c.length >= 5 && (k.endsWith(c) || k.startsWith(c) || (k.length >= 6 && (c.endsWith(k) || c.startsWith(k)))); };
-    uguali = righe.map((r, i) => (simile(r.codice) || (r.barcode && simile(r.barcode))) ? i : -1).filter(i => i >= 0);
+    uguali = righe.map((r, i) => (simile(r.codice) || (r.orig && simile(r.orig)) || (r.barcode && simile(r.barcode))) ? i : -1).filter(i => i >= 0);
   }
   const fatto = i => { const s = statoRiga(righe[i]); return s === "ok" || s === "diff" ? 1 : 0; };
   return uguali.sort((a, b) => fatto(a) - fatto(b) || a - b);
@@ -374,6 +375,7 @@ if (typeof document !== "undefined") (function () {
     try {
       const righe = await server("elenco");
       if (attiva || scelta) return;          // l'operaio sta confermando: si aggiorna al giro dopo
+      applicaCodici(righe);
       const extra = st ? st.extra : [];
       st = righe.length || extra.length ? { righe: ordina(righe), extra } : null;
       disegna();
@@ -402,6 +404,7 @@ if (typeof document !== "undefined") (function () {
           if (busta.id) { if (giaVisti.has(busta.id)) return; giaVisti.add(busta.id); }
           const d = JSON.parse(busta.message);
           if (d && (d.e === "vivo" || d.e === "fermo")) { robot(d.e === "vivo" ? "" : d.m); return; }
+          if (d && d.e === "codice") { codici[d.r] = d.cod; try { localStorage.setItem("codici", JSON.stringify(codici)); } catch (e) {} if (st) applicaCodici(st.righe); if (!attiva && !scelta) disegna(); return; }
           if (d && d.e === "prec") { codaPrec.push(d); if (navigator.vibrate) navigator.vibrate([150, 80, 150]); prossimaPrec(); return; }
           if (d && d.e === "abbinata") { abbinate[d.r] = d.pre; try { localStorage.setItem("abbinate", JSON.stringify(abbinate)); } catch (e) {} if (!attiva && !scelta) disegna(); return; }
           if (d && (d.e === "ubic" || d.e === "crea")) { codaUbic.push(d); if (navigator.vibrate) navigator.vibrate([150, 80, 150]); prossimaUbic(); return; }
@@ -529,6 +532,28 @@ if (typeof document !== "undefined") (function () {
   }
   /* Riga con la marca ancora da abbinare (nel foglio «FORNITORE:sigla»): il robot non può né stampare né caricare finché manca
      il precodice. Il 25/11/2026 tre righe così hanno fatto saltare il carico di Salamone: ora si vede subito e il carico si blocca prima. */
+  /* CODICE A GESTIONALE (utente, 26/11/2026): se il codice della bolla non è quello con cui l'articolo è in SirJ, dalla finestrella
+     della riga («Modifica codice») l'operaio scrive quello giusto PRIMA di confermare la quantità: etichetta e carico useranno quello.
+     Il codice della bolla resta ricordato (r.orig), così sparando l'etichetta del fornitore la riga si trova ancora. */
+  let codici = {};        // id riga -> codice a gestionale
+  try { codici = JSON.parse(localStorage.getItem("codici") || "{}") || {}; } catch (e) { codici = {}; }
+  function applicaCodici(righe) { (righe || []).forEach(r => { const c = codici[r.id]; if (c && c !== r.codice) { r.orig = r.orig || r.codice; r.codice = c; } }); }
+  function cambiaCodice() {
+    if (!attiva || attiva.tipo !== "riga" || !st) return;
+    const r = st.righe[attiva.i]; if (!r) return;
+    let n = prompt("Codice come è scritto nel gestionale (SirJ):", r.codice);
+    if (n == null) return;
+    n = n.trim().toUpperCase().replace(/\s+/g, " ");
+    if (!/^[A-Z0-9][A-Z0-9 .\/\-_]{1,29}$/.test(n)) { $("cErr").textContent = "Codice non valido (lettere, numeri e . / - _, massimo 30)"; return; }
+    if (n === r.codice) return;
+    if (!canaleVeloce) { $("cErr").textContent = "Non riesco a mandare il codice al robot: riprova tra un attimo"; return; }
+    r.orig = r.orig || r.codice; r.codice = n; codici[r.id] = n;
+    try { localStorage.setItem("codici", JSON.stringify(codici)); } catch (e) {}
+    $("cCod").textContent = n; $("cErr").textContent = ""; salva();
+    fetch("https://ntfy.sh/" + canaleVeloce, { method: "POST", body: JSON.stringify({ x: r.id, cod: n, t: Date.now() }) })
+      .then(x => { if (!x.ok) throw new Error("risposta " + x.status); })
+      .catch(e => { $("cErr").textContent = "CODICE NON MANDATO AL ROBOT (" + (e && e.message ? e.message : e) + "): riprova"; });
+  }
   let abbinate = {};      // id riga -> precodice scelto dall'operaio (lo manda il robot; resta anche se il foglio non è ancora aggiornato)
   try { abbinate = JSON.parse(localStorage.getItem("abbinate") || "{}") || {}; } catch (e) { abbinate = {}; }
   function daAbbinare(r) { return String(r.marca || "").indexOf(":") >= 0 && !abbinate[r.id]; }
@@ -639,6 +664,7 @@ if (typeof document !== "undefined") (function () {
     $("cMostra").classList.remove("nascosto"); $("cMod").classList.remove("nascosto");
     $("cModBox").classList.add("nascosto"); $("cEti").classList.add("nascosto");
     $("cNo").classList.toggle("nascosto", !!o.senzaAnnulla); $("cAzz").classList.toggle("nascosto", !o.azzera);
+    $("cCodMod").classList.toggle("nascosto", o.tipo !== "riga");
     $("conferma").classList.remove("nascosto");
     disegna();
     if (o.tipo !== "riga") modifica();   // non in bolla: la quantità va scritta
@@ -904,6 +930,7 @@ if (typeof document !== "undefined") (function () {
   });
   $("cQta").addEventListener("input", () => { $("cErr").textContent = ""; });
   $("cMod").addEventListener("click", () => modifica());
+  $("cCodMod").addEventListener("click", cambiaCodice);
   $("cAzz").addEventListener("click", () => { const r = st.righe[attiva.i]; r.arrivati = null; invia(r.id, "tot", null); avviso(""); salva(); chiudiQta(); });
   $("cMeno").addEventListener("click", () => passo(-1));
   $("cPiu").addEventListener("click", () => passo(1));
@@ -935,7 +962,7 @@ if (typeof document !== "undefined") (function () {
 
   /* Versione della pagina: il telefono può tenere in memoria una copia vecchia anche per 10 minuti. In basso a destra si legge
      quale versione è aperta; se in linea ce n'è una più nuova, la pagina si ricarica da sola (una volta) per prenderla. */
-  const VERSIONE = "26/11 09:53";
+  const VERSIONE = "26/11 10:26";
   if (VERSIONE.indexOf("__") !== 0) {
     $("ver").textContent = "versione " + VERSIONE;
     if (/^https?:$/.test(location.protocol)) fetch("versione.txt?" + Date.now(), { cache: "no-store" }).then(r => r.ok ? r.text() : "").then(t => {
