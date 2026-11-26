@@ -173,6 +173,7 @@
   <div class="popup">
     <div class="cod" id="cCod"></div>
     <div class="des" id="cDes"></div>
+    <div class="des" id="cPre"></div>
     <div class="doc2" id="cDoc"></div>
     <div class="bolla" id="cBolla"></div>
     <div class="qta" id="cMostra"></div>
@@ -186,6 +187,7 @@
     <button id="cOk" class="primario">OK</button>
     <button id="cMod">Modifica quantità</button>
     <button id="cCodMod" class="nascosto">Modifica codice</button>
+    <button id="cPreMod" class="nascosto">Modifica precodice</button>
     <button id="cNo">Annulla</button>
     <button id="cAzz" class="nascosto">Azzera questa riga</button>
   </div>
@@ -443,7 +445,7 @@ if (typeof document !== "undefined") (function () {
           if (d && (d.e === "vivo" || d.e === "fermo")) { robot(d.e === "vivo" ? "" : d.m); return; }
           if (d && d.e === "codice") { codici[d.r] = d.cod; try { localStorage.setItem("codici", JSON.stringify(codici)); } catch (e) {} if (st) applicaCodici(st.righe); if (!attiva && !scelta) disegna(); return; }
           if (d && d.e === "prec") { codaPrec.push(d); if (navigator.vibrate) navigator.vibrate([150, 80, 150]); prossimaPrec(); return; }
-          if (d && d.e === "abbinata") { abbinate[d.r] = d.pre; try { localStorage.setItem("abbinate", JSON.stringify(abbinate)); } catch (e) {} if (!attiva && !scelta) disegna(); return; }
+          if (d && d.e === "abbinata") { abbinate[d.r] = d.pre; if (attiva && attiva.tipo === "riga" && st && st.righe[attiva.i] && st.righe[attiva.i].id === d.r) { scriviPre(st.righe[attiva.i]); $("cErr").textContent = ""; } try { localStorage.setItem("abbinate", JSON.stringify(abbinate)); } catch (e) {} if (!attiva && !scelta) disegna(); return; }
           if (d && (d.e === "ubic" || d.e === "crea")) { codaUbic.push(d); if (navigator.vibrate) navigator.vibrate([150, 80, 150]); prossimaUbic(); return; }
           if (!d || !d.m) return;
           avviso(d.m, d.e === "ok" ? "verde" : "rosso"); attesaCarico = null;
@@ -595,7 +597,26 @@ if (typeof document !== "undefined") (function () {
   let abbinate = {};      // id riga -> precodice scelto dall'operaio (lo manda il robot; resta anche se il foglio non è ancora aggiornato)
   try { abbinate = JSON.parse(localStorage.getItem("abbinate") || "{}") || {}; } catch (e) { abbinate = {}; }
   function daAbbinare(r) { return String(r.marca || "").indexOf(":") >= 0 && !abbinate[r.id]; }
-  function marcaDi(r) { return String(r.marca || "").indexOf(":") >= 0 && abbinate[r.id] ? abbinate[r.id] : r.marca; }
+  /* il precodice scelto dall'operatore (anche col pulsante «Modifica precodice», 26/11/2026) vince su quello della bolla */
+  function marcaDi(r) { return abbinate[r.id] ? abbinate[r.id] : r.marca; }
+  function scriviPre(r) { $("cPre").textContent = r ? (daAbbinare(r) ? "Precodice: DA SCEGLIERE" : "Precodice: " + marcaDi(r)) : ""; }
+  /* MODIFICA PRECODICE (utente, 26/11/2026): di solito il precodice della bolla è giusto (Iveco = 2), ma a volte in magazzino
+     l'articolo è sotto un altro: l'operatore lo corregge qui, il robot controlla che esista in SirJ, lo ricorda per la riga e
+     lo usa per l'etichetta e per il carico del DDT. */
+  function cambiaPrecodice() {
+    if (!attiva || attiva.tipo !== "riga" || !st) return;
+    const r = st.righe[attiva.i]; if (!r) return;
+    let n = prompt("Precodice (marca) di questo articolo nel gestionale:", daAbbinare(r) ? "" : marcaDi(r));
+    if (n == null) return;
+    n = n.trim().toUpperCase().replace(/\s+/g, "");
+    if (!/^[A-Z0-9.]{1,6}$/.test(n)) { $("cErr").textContent = "Precodice non valido"; return; }
+    if (!daAbbinare(r) && n === String(marcaDi(r)).toUpperCase()) return;
+    if (!canaleVeloce) { $("cErr").textContent = "Non riesco a mandare il precodice al robot: riprova tra un attimo"; return; }
+    $("cErr").textContent = "Precodice " + n + " mandato al robot: aspetto la conferma…";
+    fetch(base() + canaleVeloce, { method: "POST", body: JSON.stringify({ q: r.id, pre: n, n: 0, t: Date.now() }) })
+      .then(x => { if (!x.ok) throw new Error("risposta " + x.status); })
+      .catch(e => { $("cErr").textContent = "PRECODICE NON MANDATO AL ROBOT (" + (e && e.message ? e.message : e) + "): riprova"; });
+  }
   function stampaVeloce(id, n) {
     if (!canaleVeloce || !(n > 0)) return;
     const rg = st && st.righe.find(x => x.id === id);
@@ -706,6 +727,8 @@ if (typeof document !== "undefined") (function () {
     $("cModBox").classList.add("nascosto"); $("cEti").classList.add("nascosto");
     $("cNo").classList.toggle("nascosto", !!o.senzaAnnulla); $("cAzz").classList.toggle("nascosto", !o.azzera);
     $("cCodMod").classList.toggle("nascosto", o.tipo !== "riga");
+    $("cPreMod").classList.toggle("nascosto", o.tipo !== "riga");
+    scriviPre(o.tipo === "riga" && st ? st.righe[o.i] : null);
     $("conferma").classList.remove("nascosto");
     disegna();
     if (o.tipo !== "riga") modifica();   // non in bolla: la quantità va scritta
@@ -972,6 +995,7 @@ if (typeof document !== "undefined") (function () {
   $("cQta").addEventListener("input", () => { $("cErr").textContent = ""; });
   $("cMod").addEventListener("click", () => modifica());
   $("cCodMod").addEventListener("click", cambiaCodice);
+  $("cPreMod").addEventListener("click", cambiaPrecodice);
   $("cAzz").addEventListener("click", () => { const r = st.righe[attiva.i]; r.arrivati = null; invia(r.id, "tot", null); avviso(""); salva(); chiudiQta(); });
   $("cMeno").addEventListener("click", () => passo(-1));
   $("cPiu").addEventListener("click", () => passo(1));
@@ -1003,7 +1027,7 @@ if (typeof document !== "undefined") (function () {
 
   /* Versione della pagina: il telefono può tenere in memoria una copia vecchia anche per 10 minuti. In basso a destra si legge
      quale versione è aperta; se in linea ce n'è una più nuova, la pagina si ricarica da sola (una volta) per prenderla. */
-  const VERSIONE = "26/11 12:24";
+  const VERSIONE = "26/11 12:38";
   if (VERSIONE.indexOf("__") !== 0) {
     $("ver").textContent = "versione " + VERSIONE;
     if (/^https?:$/.test(location.protocol)) fetch("versione.txt?" + Date.now(), { cache: "no-store" }).then(r => r.ok ? r.text() : "").then(t => {
